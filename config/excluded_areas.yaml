@@ -1,0 +1,24 @@
+# Exkluderade rättsområden — §AI täcker INTE dessa
+# Soft-block: assistenten svarar inte men ger hänvisning.
+# Fungerar på både fråge-klassificering och SFS-matchning.
+
+excluded_areas:
+  - id: straffrätt
+    label: "Straffrätt"
+    sfs_patterns: ["1962:700", "2010:1408"]  # BrB, RB-delar
+    message: "Denna tjänst täcker inte straffrättsliga frågor. Kontakta en advokat eller rättshjälpen."
+
+  - id: asyl
+    label: "Asylrätt och migration"
+    sfs_patterns: ["2005:716", "2016:752"]
+    message: "Asylrättsliga frågor kräver juridiskt ombud. Kontakta Advokatjouren eller Rådgivningsbyrån för asylsökande."
+
+  - id: skatterätt
+    label: "Skatterätt"
+    sfs_patterns: ["1999:1229"]
+    message: "För skattefrågor, kontakta Skatteverket eller en skatterådgivare."
+
+  - id: vbu
+    label: "Vårdnad, boende och umgänge"
+    sfs_patterns: ["1949:381_kap6"]
+    message: "Tvister om vårdnad, boende och umgänge kräver juridiskt ombud. Kontakta familjerätten i din kommun."

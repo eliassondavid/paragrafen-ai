@@ -1,0 +1,27 @@
+# Domstolsfilter — §AI indexerar ENDAST avgöranden från dessa instanser
+# Inget underrättsmaterial (tingsrätt, förvaltningsrätt).
+
+included_courts:
+  - id: hd
+    label: "Högsta domstolen"
+    abbreviation: "HD"
+    case_prefix: ["NJA", "Ö", "T"]
+
+  - id: hfd
+    label: "Högsta förvaltningsdomstolen"
+    abbreviation: "HFD"
+    case_prefix: ["HFD", "RÅ"]
+
+  - id: hovr
+    label: "Hovrätterna"
+    abbreviation: "HovR"
+    note: "Publicerade avgöranden med prejudikatvärde"
+
+  - id: kamr
+    label: "Kammarrätterna"
+    abbreviation: "KamR"
+    includes:
+      - "Miljööverdomstolen (MiÖD)"
+      - "Mark- och miljööverdomstolen (MmÖD)"
+
+consolidation_source: "rk"  # Riksdagskansliet konsoliderade texter

@@ -1,0 +1,27 @@
+version: "3.9"
+
+services:
+  paragrafen-api:
+    build: .
+    container_name: paragrafen-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config
+    environment:
+      - EMBEDDING_MODEL=intfloat/multilingual-e5-large
+      - CHROMA_PERSIST_DIR=/app/data/index
+      - LOG_LEVEL=INFO
+    restart: unless-stopped
+
+  # Uncomment for Qdrant (skalning, >100k chunks)
+  # qdrant:
+  #   image: qdrant/qdrant:latest
+  #   ports:
+  #     - "6333:6333"
+  #   volumes:
+  #     - ./data/qdrant:/qdrant/storage
+
+volumes:
+  data:

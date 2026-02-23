@@ -1,0 +1,9 @@
+[
+  {
+    "id": "gs_001",
+    "question": "Vad gäller för uppsägningstid vid anställning i Sverige?",
+    "expected_sources": ["1982:80"],
+    "expected_norm_level": "lag",
+    "note": "TODO: Lägg till förväntad svar-sammanfattning"
+  }
+]

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://paragrafen.ai/schemas/doktrin_schema.json",
+  "title": "DoktrinDocument",
+  "description": "Schema för doktrin-dokument. author-fält obligatoriskt.",
+  "type": "object",
+  "required": ["id", "type", "title", "author", "source_url", "sha256"],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "type": { "type": "string", "const": "doktrin" },
+    "title": { "type": "string" },
+    "author": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "description": "Fullständigt namn" },
+        "role": { "type": "string", "description": "Professor, docent, etc." }
+      }
+    },
+    "work_title": { "type": "string" },
+    "edition": { "type": "string" },
+    "year": { "type": "integer" },
+    "isbn": { "type": "string" },
+    "publisher": { "type": "string" },
+    "citation_format": {
+      "type": "string",
+      "description": "Mall: {author.name}, {work_title}, {edition}, s. {page}"
+    },
+    "source_url": { "type": "string", "format": "uri" },
+    "sha256": { "type": "string" },
+    "fetched_at": { "type": "string", "format": "date-time" }
+  }
+}

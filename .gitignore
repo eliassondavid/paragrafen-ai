@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.env
+dist/
+*.egg-info/
+
+# Data (lokal, indexeras ej)
+data/raw/
+data/norm/
+data/pub/
+data/index/
+
+# Modeller (stora filer)
+models/
+*.bin
+*.safetensors
+
+# OS
+.DS_Store
+*.swp

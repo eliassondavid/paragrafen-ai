@@ -1,0 +1,23 @@
+name: Daily legal source update
+
+on:
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: pip install -e .
+      - name: RSS diff + ingest
+        run: python ingest/rss_watcher.py
+      - name: QA schema validation
+        run: pytest qa/schema_validator.py -v
+      - name: Excluded area test
+        run: pytest qa/excluded_area_test.py -v

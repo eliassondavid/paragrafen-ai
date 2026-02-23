@@ -1,0 +1,32 @@
+# Embedding-konfiguration — §AI
+# Steg 1: intfloat/multilingual-e5-large (gratis, lokal)
+# Byt till KBLab/sentence-bert-swedish-cased efter benchmark
+
+embedding:
+  model: "intfloat/multilingual-e5-large"
+  # alternatives:
+  #   - "KBLab/sentence-bert-swedish-cased"   # Tränad på svenska KB-data
+  #   - "nomic-ai/nomic-embed-text-v1.5"       # Matryoshka, 8192 tokens
+  max_tokens: 512
+  batch_size: 32
+  device: "cpu"  # "cuda" vid GPU-tillgång
+
+chunking:
+  chunk_size: 400          # tokens
+  chunk_overlap: 50        # tokens
+  split_on: ["paragraph", "section"]
+
+vector_store:
+  backend: "chroma"        # "qdrant" vid skalning
+  persist_directory: "data/index"
+  collection_name: "paragrafen_v1"
+
+metadata_fields:
+  - norm_level            # grundlag|lag|förordning|föreskrift|prejudikat|förarbete|doktrin
+  - sfs_nr                # t.ex. "1949:105"
+  - ikraft                # ISO-datum för ikraftträdande
+  - source_court          # HD|HFD|HovR|KamR
+  - consolidation_source  # "rk" | "none"
+  - embedding_model       # loggad per chunk för migrationssäkerhet
+  - chunk_id
+  - doc_id

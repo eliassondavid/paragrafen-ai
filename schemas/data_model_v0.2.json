@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://paragrafen.ai/schemas/data_model_v0.2.json",
+  "title": "BaseDocument",
+  "description": "Basschema för alla dokument i §AI-pipeline",
+  "type": "object",
+  "required": ["id", "type", "source_url", "sha256", "fetched_at", "norm_level", "ikraft"],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "type": {
+      "type": "string",
+      "enum": ["författning", "praxis", "förarbete", "föreskrift", "doktrin"]
+    },
+    "norm_level": {
+      "type": "string",
+      "enum": ["grundlag", "lag", "förordning", "föreskrift", "prejudikat", "förarbete", "doktrin"]
+    },
+    "title": { "type": "string" },
+    "sfs_nr": { "type": "string", "description": "t.ex. '1949:105'" },
+    "ikraft": { "type": "string", "format": "date", "description": "ISO-datum för ikraftträdande" },
+    "source_url": { "type": "string", "format": "uri" },
+    "sha256": { "type": "string" },
+    "fetched_at": { "type": "string", "format": "date-time" },
+    "consolidation_source": {
+      "type": "string",
+      "enum": ["rk", "none"],
+      "description": "rk = Riksdagskansliet konsoliderad text"
+    }
+  }
+}
