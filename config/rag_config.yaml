@@ -11,3 +11,9 @@ rag:
     - "paragrafen_forarbete_v1"
   # Low-confidence-tröskel ärvs från ConfidenceGate (0.5)
   # Denna config styr bara retrieval och LLM
+
+chroma:
+  persistent_path: "data/index/chroma"
+  collections:
+    sfs: "paragrafen_sfs_v1"
+    forarbete: "paragrafen_forarbete_v1"

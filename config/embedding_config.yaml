@@ -30,3 +30,6 @@ metadata_fields:
   - embedding_model       # loggad per chunk för migrationssäkerhet
   - chunk_id
   - doc_id
+
+sfs_parser:
+  single_chapter_sequential_threshold: 15
