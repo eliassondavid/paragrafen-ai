@@ -133,13 +133,13 @@ class RagPipeline:
         effective_top_k = top_k if top_k is not None else self._top_k
 
         # ── Steg 1: blockkontroll ────────────────────────────────────
-        block_result = self._area_blocker.is_blocked(user_query)
-        if block_result.get("blocked", False):
+        _blocked, _block_msg = self._area_blocker.is_blocked(user_query)
+        if _blocked:
             logger.info("Fråga blockerad: %s", user_query[:80])
             return {
-                "answer": block_result.get("message", ""),
+                "answer": _block_msg or "",
                 "blocked": True,
-                "blocked_message": block_result.get("message"),
+                "blocked_message": _block_msg,
                 "sources": [],
                 "confidence": {},
                 "chunks_used": 0,
@@ -147,7 +147,7 @@ class RagPipeline:
             }
 
         # ── Steg 2: embedding ────────────────────────────────────────
-        query_vector: list[float] = self._embedder.embed(user_query)
+        query_vector: list[float] = self._embedder.embed_single(user_query)
 
         # ── Steg 3: hämta råchunks från alla collections ─────────────
         where: dict | None = None
@@ -157,13 +157,18 @@ class RagPipeline:
         raw_chunks: list[dict] = []
         for collection in self._collections:
             try:
-                results = self._vector_store.query(
+                documents, metadatas, distances = self._vector_store.query(
                     collection_name=collection,
                     query_embedding=query_vector,
                     n_results=effective_top_k,
-                    where=where,
+                    where_filter=where,
                 )
-                raw_chunks.extend(results)
+                for text, meta, dist in zip(documents, metadatas, distances):
+                    raw_chunks.append({
+                        "text": text,
+                        "metadata": meta,
+                        "distance": dist,
+                    })
             except Exception as exc:  # noqa: BLE001
                 logger.warning("VectorStore query misslyckades för %s: %s", collection, exc)
 

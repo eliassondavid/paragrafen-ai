@@ -73,17 +73,15 @@ def _make_anthropic_response(text: str):
 
 
 def _mock_is_blocked_not_blocked(query: str):
-    return {"blocked": False, "message": None}
+    return (False, None)
 
 
 def _mock_is_blocked_blocked(query: str):
-    return {
-        "blocked": True,
-        "message": (
-            "Denna tjänst täcker inte straffrättsliga frågor. "
-            "Kontakta en advokat eller rättshjälpen."
-        ),
-    }
+    return (
+        True,
+        "Denna tjänst täcker inte straffrättsliga frågor. "
+        "Kontakta en advokat eller rättshjälpen.",
+    )
 
 
 def run_scenario(label, pipeline, query, legal_area=None):
