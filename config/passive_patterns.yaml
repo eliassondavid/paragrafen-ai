@@ -1,0 +1,29 @@
+# config/passive_patterns.yaml
+# Passiv -> aktiv omskrivningar för §AI klarspråkslager
+# Exakt strängmatchning — ingen generell NLP
+
+passive_patterns:
+  - pattern: "kan sägas upp"
+    replacement: "kan arbetsgivaren säga upp"
+  - pattern: "ska betalas"
+    replacement: "ska du betala"
+  - pattern: "får nekas"
+    replacement: "kan hyresvärden neka"
+  - pattern: "kan överklagas"
+    replacement: "kan du överklaga"
+  - pattern: "ska meddelas"
+    replacement: "ska myndigheten meddela"
+  - pattern: "har rätt att nekas"
+    replacement: "kan du nekas rätten"
+  - pattern: "kan jämkas"
+    replacement: "kan domstolen jämka"
+  - pattern: "ska ersättas"
+    replacement: "ska den ansvarige ersätta"
+  - pattern: "får sägas upp"
+    replacement: "får hyresvärden säga upp"
+  - pattern: "ska kommuniceras"
+    replacement: "ska myndigheten kommunicera"
+  - pattern: "kan hävas"
+    replacement: "kan du häva"
+  - pattern: "ska handläggas"
+    replacement: "ska myndigheten handlägga"

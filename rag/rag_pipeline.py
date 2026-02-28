@@ -21,6 +21,7 @@ from guard.confidence_gate import ConfidenceGate
 from index.embedder import Embedder
 from index.norm_boost import NormBoost
 from index.vector_store import ChromaVectorStore
+from normalize.klarsprak_layer import KlarsprakLayer
 from publish.disclaimer_injector import DisclaimerInjector
 
 logger = logging.getLogger("paragrafenai.noop")
@@ -86,6 +87,7 @@ class RagPipeline:
             raw = yaml.safe_load(fh)
         cfg: dict[str, Any] = raw.get("rag", {})
 
+        self._config_dir: str = str(cfg_file.parent)
         self._top_k: int = cfg.get("top_k", 10)
         self._llm_model: str = cfg.get("llm_model", "claude-opus-4-6")
         self._llm_max_tokens: int = cfg.get("llm_max_tokens", 2048)
@@ -98,6 +100,7 @@ class RagPipeline:
         self._vector_store = ChromaVectorStore(config_path=config_path)
         self._norm_boost = NormBoost()
         self._confidence_gate = ConfidenceGate()
+        self._klarsprak = KlarsprakLayer(config_dir=self._config_dir)
         self._disclaimer_injector = DisclaimerInjector()
 
         api_key = os.environ.get("ANTHROPIC_API_KEY")
@@ -204,9 +207,19 @@ class RagPipeline:
         )
         llm_answer: str = response.content[0].text
 
-        # ── Steg 9: injicera disclaimer ──────────────────────────────
+        # ── Steg 9: klarspråkspostprocess ────────────────────────────
+        if hasattr(self, "_klarsprak"):
+            clarified_answer: str = self._klarsprak.process(
+                answer=llm_answer,
+                query=user_query,
+                legal_area=legal_area,
+            )
+        else:
+            clarified_answer = llm_answer
+
+        # ── Steg 10: injicera disclaimer ─────────────────────────────
         final_answer: str = self._disclaimer_injector.inject(
-            llm_answer, sources=sources
+            clarified_answer, sources=sources
         )
 
         logger.info("Fråga besvarad. chunks_used=%d sources=%d", len(reranked_chunks), len(sources))
