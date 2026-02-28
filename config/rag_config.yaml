@@ -1,0 +1,13 @@
+# config/rag_config.yaml
+# §AI (paragrafen.ai) — RAG-pipeline konfiguration
+
+rag:
+  top_k: 10
+  llm_model: "claude-opus-4-6"
+  llm_max_tokens: 2048
+  # Collections att söka i (utökas med praxis och doktrin när de är indexerade)
+  collections:
+    - "paragrafen_sfs_v1"
+    - "paragrafen_forarbete_v1"
+  # Low-confidence-tröskel ärvs från ConfidenceGate (0.5)
+  # Denna config styr bara retrieval och LLM
