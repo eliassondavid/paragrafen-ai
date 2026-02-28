@@ -1,304 +1,283 @@
-"""
-sfs_parser.py — Parsrar Riksdagens HTML-format till strukturerade paragrafobjekt.
+"""Parse SFS HTML documents into paragraph-level chunks."""
 
-Hanterar tre HTML-strukturer:
-  1. <h3 name="K{n}"> + ankare K{n}P{m} — kapitelrelativ (FB, MB, RB)
-  2. <h3 name="K{n}"> + ankare K{n}P{m} — löpande/sequential (AvtL, LAS)
-  3. Inga kapitel, bara ankare P{n} — kapitellös (FL, korta förordningar)
+from __future__ import annotations
 
-Beslut S7: detect_numbering_type() avgör typ A vs B automatiskt.
-"""
-
+import html as html_lib
 import re
-import yaml
-import logging
-from pathlib import Path
-from bs4 import BeautifulSoup, Tag
+from dataclasses import dataclass
+from typing import Any
 
-logger = logging.getLogger(__name__)
-
-# Config
-CONFIG_DIR = Path("config")
-with open(CONFIG_DIR / "embedding_config.yaml") as f:
-    _cfg = yaml.safe_load(f)
-SINGLE_CHAPTER_THRESHOLD = _cfg["sfs_parser"]["single_chapter_sequential_threshold"]
-
-# Mönster för definitionsparagrafer (S2)
-DEFINITION_PATTERNS = [
-    r"(?i)^i\s+denna\s+(lag|förordning|balk|stadga|föreskrift)",
-    r"(?i)^med\s+\w+\s+avses\s+i\s+denna",
-    r"(?i)^i\s+detta\s+kapitel\s+avses\s+med",
-    r"(?i)^följande\s+ord\s+och\s+uttryck\s+har",
-    r"(?i)^beteckningarna?\s+i\s+denna",
-    r"(?i)^i\s+denna\s+lag\s+används?\s+följande\s+begrepp",
-]
-
-# Mönster för hänvisningar (S6)
-REFERENCE_PATTERNS = [
-    (r"\b(\d{4}:\d+)\b", "cites"),
-    (r"(?i)\bändras?\s+.*?(\d{4}:\d+)", "amends"),
-    (r"(?i)\bupphävs?\s+.*?(\d{4}:\d+)", "repeals"),
-    (r"(?i)\bdefiniera[rs]?\s+.*?(\d{4}:\d+)", "defines"),
-    (r"(?i)\bund(?:an)?tag.*?(\d{4}:\d+)", "exempts"),
-]
+try:
+    from bs4 import BeautifulSoup
+except ImportError:  # pragma: no cover - fallback is covered instead
+    BeautifulSoup = None  # type: ignore[assignment]
 
 
-def detect_numbering_type(chapters: dict) -> str:
-    """
-    Avgör om en lag använder kapitelrelativ (relative) eller löpande (sequential) numrering.
-    
-    chapters: {kapitel_nr: [paragraf_nr, ...]}  — bara K-ankare (int → list[int])
-    
-    Regler (S7):
-    1. Inga K-ankare → sequential (kapitellös)
-    2. K2 börjar INTE på P1 → sequential (global numrering)
-    3. K2 börjar på P1 → relative
-    4. Bara K1, ≥ threshold paragrafer → sequential
-    5. Bara K1, < threshold paragrafer → relative
-    """
-    if not chapters:
-        return "sequential"  # Regel 1: inga kapitel
-    
-    if len(chapters) >= 2:
-        # Regel 2/3: kolla vad K2 (eller lägsta K > 1) börjar på
-        sorted_k = sorted(chapters.keys())
-        for k_nr in sorted_k:
-            if k_nr <= 1:
-                continue
-            kn_paragraphs = sorted(chapters.get(k_nr, []))
-            if kn_paragraphs:
-                if kn_paragraphs[0] == 1:
-                    return "relative"   # Regel 3
-                else:
-                    return "sequential"  # Regel 2
-    
-    # En enda K-grupp, men inte K1 — troligen sequential (EU-numrering etc.)
-    if len(chapters) == 1:
-        single_k = list(chapters.keys())[0]
-        if single_k > 1:
-            return "sequential"  # Enda kapitel är inte K1 — global numrering
-    
-    # Bara K1
-    k1_count = len(chapters.get(1, []))
-    if k1_count >= SINGLE_CHAPTER_THRESHOLD:
-        return "sequential"  # Regel 4
-    else:
-        return "relative"   # Regel 5
+@dataclass(frozen=True, slots=True)
+class _Heading:
+    """Represents the latest heading metadata seen before a paragraph."""
+
+    start: int
+    kapitel_nr: str | None
+    kapitel_titel: str | None
 
 
-def is_definition_paragraph(text: str) -> bool:
-    """Returnerar True om texten ser ut att vara en definitionsparagraf."""
-    for pattern in DEFINITION_PATTERNS:
-        if re.search(pattern, text[:500]):
-            return True
-    return False
+class SfsParser:
+    """Parser that chunks SFS documents with paragraph-first strategy."""
 
-
-def is_overgangsbestammelse_section(text: str) -> bool:
-    """Returnerar True om texten är en övergångsbestämmelse."""
-    return bool(re.search(r"(?i)(övergångsbestämmelse|ikraftträdande|tillämpas?\s+första\s+gången)", text[:300]))
-
-
-def extract_references(text: str) -> list[dict]:
-    """Extraherar hänvisningar från löptext, returnerar typade kanter."""
-    refs = []
-    seen = set()
-    # SFS-nummerformat
-    for match in re.finditer(r"\b(\d{4}:\d+)\b", text):
-        target_sfs = match.group(1)
-        target = f"sfs::{target_sfs}"
-        if target not in seen:
-            refs.append({"target": target, "relation_type": "cites"})
-            seen.add(target)
-    return refs
-
-
-def parse_html(html: str, sfs_nr: str, meta: dict) -> list[dict]:
-    """
-    Parsrar Riksdagens HTML-dokument till en lista paragrafobjekt.
-    
-    Returnerar:
-    [
-      {
-        "kapitel": str,         # "" om kapitellös
-        "kapitelrubrik": str,
-        "paragraf": str,        # "1", "1a", etc.
-        "paragraf_rubrik": str,
-        "stycken": [str],       # lista med stycketexter
-        "text": str,            # sammanfogad text
-        "is_definition": bool,
-        "is_overgangsbestammelse": bool,
-        "has_table": bool,
-        "references_to": list,
-        "numbering_type": str,  # sätts efter detect_numbering_type()
-        "has_kapitel": bool,
-      }
+    KAPITEL_PATTERNS = [
+        re.compile(r"^(\d+)\s*[Kk]ap\.?\s*(.*)$"),
+        re.compile(r"^[Kk]apitel\s+(\d+)\.?\s*(.*)$"),
+        re.compile(r"^[Kk][Aa][Pp]\.?\s*(\d+)\.?\s*(.*)$"),
     ]
-    """
-    soup = BeautifulSoup(html, "html.parser")
-    
-    # Samla kapitelstruktur för numbering_type-detektion
-    # chapters: {kapitel_int: [paragraf_int, ...]}
-    chapters: dict[int, list[int]] = {}
-    
-    # Identifiera alla ankare
-    # Format 1: <a name="K1P1"> eller <a name="P1">
-    for anchor in soup.find_all("a", {"name": True}):
-        name = anchor["name"]
-        km = re.match(r"K(\d+)P(\d+)", name)
-        if km:
-            k = int(km.group(1))
-            p = int(km.group(2))
-            chapters.setdefault(k, []).append(p)
-        elif re.match(r"P(\d+)$", name):
-            # Kapitellös: para-ankare utan kapitel
-            pass
-    
-    numbering_type = detect_numbering_type(chapters)
-    has_kapitel = len(chapters) > 0 and numbering_type == "relative"
-    
-    paragraphs = []
-    current_kapitel = ""
-    current_kapitelrubrik = ""
-    
-    # Traversera dokumentet
-    elements = soup.find_all(["h2", "h3", "h4", "p", "div", "table"])
-    
-    current_para = None
-    
-    def save_current():
-        if current_para and (current_para.get("stycken") or current_para.get("text")):
-            text = "\n".join(current_para["stycken"]) if current_para["stycken"] else current_para.get("text", "")
-            current_para["text"] = text.strip()
-            if current_para["text"]:
-                current_para["is_definition"] = is_definition_paragraph(current_para["text"])
-                current_para["is_overgangsbestammelse"] = is_overgangsbestammelse_section(current_para["text"])
-                current_para["references_to"] = extract_references(current_para["text"])
-                current_para["numbering_type"] = numbering_type
-                current_para["has_kapitel"] = has_kapitel
-                paragraphs.append(dict(current_para))
-    
-    def make_para(kapitel, kapitelrubrik, paragraf, paragraf_rubrik=""):
+
+    _PARAGRAF_START_RE = re.compile(
+        r"(?m)^\s*(?:(?P<num_a>\d+[A-Za-z]?)\s*§|§\s*(?P<num_b>\d+[A-Za-z]?))(?=\s|$)"
+    )
+    _NUMBERED_START_RE = re.compile(r"(?m)^\s*(?P<num>\d+[A-Za-z]?)\.\s+")
+    _SPECIAL_HEADING_RE = re.compile(
+        r"(?i)^(?P<heading>Övergångsbestämmelser|Bilag(?:a|or)|Ikraftträdande(?:bestämmelser)?)\b.*$"
+    )
+
+    def __init__(self, max_fallback_tokens: int = 1200) -> None:
+        self.max_fallback_tokens = max_fallback_tokens
+
+    def parse(self, raw_doc: dict[str, Any]) -> dict[str, Any] | None:
+        """Parse one raw SFS document into normalized chunk schema."""
+        if not raw_doc.get("html_available", True):
+            return None
+
+        html_content = str(raw_doc.get("html_content", "")).strip()
+        if not html_content:
+            return None
+
+        text = self._normalize_text(self._clean_html_to_text(html_content))
+        if not text:
+            return None
+
+        headings = self._extract_headings(text)
+        chunks = self._parse_paragraf_chunks(text, headings)
+
+        if not chunks:
+            chunks = self._parse_numbered_chunks(text)
+        if not chunks:
+            chunks = self._parse_paragraph_fallback(text)
+        if not chunks:
+            return None
+
+        total = len(chunks)
+        ikraft = self._as_optional_str(raw_doc.get("ikraftträdandedatum"))
+        for index, chunk in enumerate(chunks):
+            chunk["chunk_index"] = index
+            chunk["chunk_total"] = total
+            chunk["ikraftträdandedatum"] = ikraft
+
         return {
-            "kapitel": kapitel,
-            "kapitelrubrik": kapitelrubrik,
-            "paragraf": paragraf,
-            "paragraf_rubrik": paragraf_rubrik,
-            "stycken": [],
-            "text": "",
-            "has_table": False,
-            "is_definition": False,
-            "is_overgangsbestammelse": False,
-            "references_to": [],
-            "numbering_type": numbering_type,
-            "has_kapitel": has_kapitel,
+            "sfs_nr": str(raw_doc.get("sfs_nr", "")),
+            "titel": str(raw_doc.get("titel", "")),
+            "ikraftträdandedatum": ikraft,
+            "consolidation_source": str(raw_doc.get("consolidation_source", "")),
+            "source_url": str(raw_doc.get("source_url", "")),
+            "chunks": chunks,
         }
-    
-    # Iterera alla element i dokumentordning
-    for el in soup.descendants:
-        if not isinstance(el, Tag):
-            continue
-        
-        # Kapitelrubrik
-        if el.name == "h2":
-            text = el.get_text(strip=True)
-            if text:
-                save_current()
-                current_para = None
-                # Kolla om det är ett nytt kapitel
-                km = re.search(r"(\d+)\s*[Kk]ap", text)
-                if km or re.search(r"(?i)kapitel\s+\d+", text):
-                    current_kapitelrubrik = text
-        
-        elif el.name == "h3":
-            name_attr = el.get("name", "")
-            text = el.get_text(strip=True)
-            km = re.match(r"K(\d+)$", name_attr)
-            if km:
-                save_current()
-                current_para = None
-                if numbering_type == "relative":
-                    current_kapitel = km.group(1)
-                # Kapitelrubrik i nästa h4 eller el.text
-                current_kapitelrubrik = text if text and not re.match(r"^\d+", text) else current_kapitelrubrik
-        
-        # Paragraf-element: identifiera via ankare
-        elif el.name in ("p", "div"):
-            # Kolla om elementet innehåller ett paragraf-ankare
-            anchor = el.find("a", {"name": True}) if el.name == "div" else None
-            if not anchor:
-                # Kolla om förälder har ankaret, eller el självt har id
-                pass
-            
-            # Paragraftext: leta efter §-tecken
-            text = el.get_text(separator=" ", strip=True)
-            
-            # Kolla om det är ett paragraf-start-element
-            para_match = re.match(r"^(\d+\s*[a-z]?)\s*§", text)
-            if para_match:
-                save_current()
-                paragraf_raw = para_match.group(1).replace(" ", "")
-                # Bestäm kapitel
-                if numbering_type == "sequential":
-                    kapitel = ""
+
+    def _clean_html_to_text(self, html_content: str) -> str:
+        """Remove non-content HTML and return readable text."""
+        if BeautifulSoup is None:
+            return self._clean_html_fallback(html_content)
+
+        try:
+            soup = BeautifulSoup(html_content, "lxml")
+        except Exception:
+            soup = BeautifulSoup(html_content, "html.parser")
+
+        for tag in soup(["script", "style", "noscript"]):
+            tag.decompose()
+
+        for selector in (
+            "nav",
+            "header",
+            "footer",
+            "aside",
+            ".breadcrumb",
+            ".breadcrumbs",
+            ".pagination",
+            ".cookie",
+            ".cookies",
+            "#menu",
+            "#nav",
+        ):
+            for el in soup.select(selector):
+                el.decompose()
+
+        return soup.get_text(separator="\n")
+
+    def _clean_html_fallback(self, html_content: str) -> str:
+        cleaned = re.sub(r"(?is)<(script|style|noscript)\b.*?>.*?</\1>", " ", html_content)
+        cleaned = re.sub(r"(?i)<br\s*/?>", "\n", cleaned)
+        cleaned = re.sub(r"(?i)</(p|div|li|h1|h2|h3|h4|h5|h6|tr|section|article)>", "\n", cleaned)
+        cleaned = re.sub(r"(?s)<[^>]+>", " ", cleaned)
+        return html_lib.unescape(cleaned)
+
+    def _normalize_text(self, text: str) -> str:
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
+        lines = [line.strip() for line in text.split("\n")]
+        text = "\n".join(lines)
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        text = re.sub(r"[ \t]{2,}", " ", text)
+        return text.strip()
+
+    def _extract_headings(self, text: str) -> list[_Heading]:
+        headings: list[_Heading] = []
+        offset = 0
+        for line in text.splitlines(keepends=True):
+            stripped = line.strip()
+            if stripped:
+                chapter_heading = self._parse_chapter_line(stripped)
+                if chapter_heading is not None:
+                    headings.append(_Heading(offset, chapter_heading[0], chapter_heading[1]))
                 else:
-                    kapitel = current_kapitel
-                current_para = make_para(kapitel, current_kapitelrubrik, paragraf_raw)
-                # Resten av texten är första stycket
-                rest = text[para_match.end():].strip()
-                if rest:
-                    current_para["stycken"].append(rest)
-            elif current_para is not None:
-                # Lägg till som stycke om det innehåller text
-                if text and len(text) > 5:
-                    current_para["stycken"].append(text)
-        
-        elif el.name == "table":
-            if current_para is not None:
-                current_para["has_table"] = True
-                # Konvertera tabell till flattext
-                rows = []
-                for row in el.find_all("tr"):
-                    cells = [td.get_text(strip=True) for td in row.find_all(["td", "th"])]
-                    rows.append(" | ".join(cells))
-                current_para["stycken"].append("\n".join(rows))
-    
-    save_current()
-    
-    # Om ingen paragraf hittades med §-mönster — försök alternativ parsing
-    if not paragraphs:
-        paragraphs = _fallback_parse(soup, numbering_type, has_kapitel, current_kapitel, current_kapitelrubrik)
-    
-    return paragraphs
+                    special_heading = self._parse_special_heading(stripped)
+                    if special_heading is not None:
+                        headings.append(_Heading(offset, None, special_heading))
+            offset += len(line)
+        return headings
 
+    def _parse_chapter_line(self, line: str) -> tuple[str, str | None] | None:
+        for pattern in self.KAPITEL_PATTERNS:
+            match = pattern.match(line)
+            if match:
+                kapitel_nr = match.group(1).strip()
+                kapitel_titel = self._as_optional_str(match.group(2))
+                return kapitel_nr, kapitel_titel
+        return None
 
-def _fallback_parse(soup, numbering_type, has_kapitel, kapitel, kapitelrubrik):
-    """Alternativ parsning för dokument med annorlunda struktur."""
-    paragraphs = []
-    full_text = soup.get_text(separator="\n", strip=True)
-    
-    # Dela på §-tecken
-    sections = re.split(r'\n(\d+\s*[a-z]?)\s*§\s*', full_text)
-    
-    for i in range(1, len(sections), 2):
-        if i + 1 < len(sections):
-            paragraf = sections[i].strip().replace(" ", "")
-            text = sections[i + 1].strip()
-            if text:
-                para = {
-                    "kapitel": "" if numbering_type == "sequential" else kapitel,
-                    "kapitelrubrik": kapitelrubrik,
-                    "paragraf": paragraf,
-                    "paragraf_rubrik": "",
-                    "stycken": [text],
-                    "text": text,
-                    "has_table": False,
-                    "is_definition": is_definition_paragraph(text),
-                    "is_overgangsbestammelse": is_overgangsbestammelse_section(text),
-                    "references_to": extract_references(text),
-                    "numbering_type": numbering_type,
-                    "has_kapitel": has_kapitel,
+    def _parse_special_heading(self, line: str) -> str | None:
+        match = self._SPECIAL_HEADING_RE.match(line)
+        if not match:
+            return None
+        heading = match.group("heading")
+        lowered = heading.lower()
+        if lowered.startswith("övergång"):
+            return "Övergångsbestämmelser"
+        if lowered.startswith("bilag"):
+            return "Bilaga"
+        return "Ikraftträdande"
+
+    def _parse_paragraf_chunks(
+        self, text: str, headings: list[_Heading]
+    ) -> list[dict[str, Any]]:
+        matches = list(self._PARAGRAF_START_RE.finditer(text))
+        if not matches:
+            return []
+
+        chunks: list[dict[str, Any]] = []
+        for index, match in enumerate(matches):
+            start = match.start()
+            end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+            chunk_text = text[start:end].strip()
+            if not chunk_text:
+                continue
+
+            paragraf_nr = (match.group("num_a") or match.group("num_b") or "").strip().lower() or None
+            kapitel_nr, kapitel_titel = self._heading_for_position(start, headings)
+            chunks.append(
+                {
+                    "paragraf_nr": paragraf_nr,
+                    "kapitel_nr": kapitel_nr,
+                    "kapitel_titel": kapitel_titel,
+                    "text": chunk_text,
+                    "legal_area": [],
                 }
-                paragraphs.append(para)
-    
-    return paragraphs
+            )
+        return chunks
+
+    def _parse_numbered_chunks(self, text: str) -> list[dict[str, Any]]:
+        matches = list(self._NUMBERED_START_RE.finditer(text))
+        if not matches:
+            return []
+
+        chunks: list[dict[str, Any]] = []
+        for index, match in enumerate(matches):
+            start = match.start()
+            end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+            chunk_text = text[start:end].strip()
+            if not chunk_text:
+                continue
+
+            chunks.append(
+                {
+                    "paragraf_nr": match.group("num").strip().lower(),
+                    "kapitel_nr": None,
+                    "kapitel_titel": None,
+                    "text": chunk_text,
+                    "legal_area": [],
+                }
+            )
+        return chunks
+
+    def _parse_paragraph_fallback(self, text: str) -> list[dict[str, Any]]:
+        blocks = [block.strip() for block in re.split(r"\n{2,}", text) if block.strip()]
+        if not blocks:
+            return []
+
+        chunks: list[dict[str, Any]] = []
+        current_blocks: list[str] = []
+        current_tokens = 0
+
+        for block in blocks:
+            block_tokens = self._token_estimate(block)
+            if current_blocks and current_tokens + block_tokens > self.max_fallback_tokens:
+                chunk_text = "\n\n".join(current_blocks).strip()
+                if chunk_text:
+                    chunks.append(
+                        {
+                            "paragraf_nr": None,
+                            "kapitel_nr": None,
+                            "kapitel_titel": None,
+                            "text": chunk_text,
+                            "legal_area": [],
+                        }
+                    )
+                current_blocks = [block]
+                current_tokens = block_tokens
+                continue
+
+            current_blocks.append(block)
+            current_tokens += block_tokens
+
+        if current_blocks:
+            chunk_text = "\n\n".join(current_blocks).strip()
+            if chunk_text:
+                chunks.append(
+                    {
+                        "paragraf_nr": None,
+                        "kapitel_nr": None,
+                        "kapitel_titel": None,
+                        "text": chunk_text,
+                        "legal_area": [],
+                    }
+                )
+        return chunks
+
+    def _heading_for_position(
+        self, position: int, headings: list[_Heading]
+    ) -> tuple[str | None, str | None]:
+        chosen: _Heading | None = None
+        for heading in headings:
+            if heading.start > position:
+                break
+            chosen = heading
+        if chosen is None:
+            return None, None
+        return chosen.kapitel_nr, chosen.kapitel_titel
+
+    def _token_estimate(self, text: str) -> int:
+        # Light-weight approximation that keeps fallback chunks reasonably bounded.
+        return len(re.findall(r"\S+", text))
+
+    def _as_optional_str(self, value: Any) -> str | None:
+        if value is None:
+            return None
+        converted = str(value).strip()
+        return converted or None

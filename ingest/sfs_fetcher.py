@@ -1,342 +1,437 @@
-"""
-sfs_fetcher.py — Hämtar SFS-dokument från Riksdagens öppna API.
+"""Fetch consolidated SFS documents from Riksdagen API and store raw JSON."""
 
-Steg S-1 i SFS-pipelinen (paragrafen.ai).
+from __future__ import annotations
 
-Funktioner:
-  - full_crawl()          — Initial hämtning av alla ~11 400 SFS-dokument
-  - incremental_update()  — Daglig diff via systemdatum-polling
-  - fetch_single(dok_id)  — Hämta ett enskilt dokument (för test/debug)
-
-API-bas: https://data.riksdagen.se/
-Licens: Fri att använda med källhänvisning.
-Rate limiting: 0.5 sek/request (god sed).
-
-Beslut S4: Riksdagens API är primär och enda källa.
-"""
-
+from datetime import date, datetime, timezone
 import json
-import time
 import logging
-import argparse
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+import re
+import time
+from typing import Any
 
 import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
+import yaml
 
-# ---------------------------------------------------------------------------
-# Konfiguration
-# ---------------------------------------------------------------------------
+logger = logging.getLogger("paragrafenai.noop")
 
-BASE_URL = "https://data.riksdagen.se"
-RAW_DIR = Path("data/raw/sfs")
-STATE_DIR = Path("data/state")
-STATE_FILE = STATE_DIR / "sfs_last_check.json"
+IKRAFT_KEY = "ikrafttr\u00e4dandedatum"
 
-REQUEST_DELAY = 0.5
-MAX_RETRIES = 5
-RETRY_BACKOFF_FACTOR = 2
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
-log = logging.getLogger("sfs_fetcher")
+class FetchError(Exception):
+    """Raised when an HTTP request fails after retries."""
 
-# ---------------------------------------------------------------------------
-# HTTP-session
-# ---------------------------------------------------------------------------
 
-def _create_session() -> requests.Session:
-    session = requests.Session()
-    retry = Retry(
-        total=MAX_RETRIES,
-        backoff_factor=RETRY_BACKOFF_FACTOR,
-        status_forcelist=[429, 500, 502, 503, 504],
-        allowed_methods=["GET"],
+class InvalidJsonResponseError(Exception):
+    """Raised when an API response cannot be decoded as expected JSON."""
+
+
+def load_sources_config(config_path: str | Path = "config/sources.yaml") -> dict[str, Any]:
+    """Load ingest source config from YAML."""
+    path = Path(config_path)
+    with path.open("r", encoding="utf-8") as fh:
+        data = yaml.safe_load(fh) or {}
+    if not isinstance(data, dict):
+        raise ValueError("Config root must be a mapping.")
+    return data
+
+
+def normalize_sfs_number(beteckning: str) -> str | None:
+    """Normalize SFS number, e.g. 'SFS 1962:700' -> '1962:700'."""
+    value = (beteckning or "").strip()
+    if not value:
+        return None
+
+    value = re.sub(r"(?i)^sfs\.?\s*", "", value).strip()
+    value = re.sub(r"\s*:\s*", ":", value)
+
+    match = re.fullmatch(r"(\d{4}):(\d+)", value)
+    if match:
+        year = match.group(1)
+        number = str(int(match.group(2)))
+        return f"{year}:{number}"
+
+    return value
+
+
+def _join_url(base_url: str, endpoint: str) -> str:
+    return f"{base_url.rstrip('/')}/{endpoint.lstrip('/')}"
+
+
+def _extract_documents(list_payload: dict[str, Any]) -> list[dict[str, Any]]:
+    document_list = list_payload.get("dokumentlista", {})
+    if not isinstance(document_list, dict):
+        return []
+
+    documents = document_list.get("dokument", [])
+    if isinstance(documents, list):
+        return [doc for doc in documents if isinstance(doc, dict)]
+    if isinstance(documents, dict):
+        return [documents]
+    return []
+
+
+def _extract_remaining(list_payload: dict[str, Any]) -> int | None:
+    document_list = list_payload.get("dokumentlista", {})
+    if not isinstance(document_list, dict):
+        return None
+
+    keys = (
+        "@\u00e5terst\u00e5ende",
+        "@aterstaende",
+        "@\u00e5terstaende",
+        "@remaining",
     )
-    adapter = HTTPAdapter(max_retries=retry)
-    session.mount("https://", adapter)
-    session.mount("http://", adapter)
-    session.headers.update({
-        "User-Agent": "paragrafen-ai/1.0 (https://paragrafen.ai)",
-        "Accept": "application/json",
-    })
-    return session
-
-SESSION = _create_session()
-
-# ---------------------------------------------------------------------------
-# API
-# ---------------------------------------------------------------------------
-
-def fetch_document_list(page: int = 1) -> dict:
-    url = f"{BASE_URL}/dokumentlista/"
-    params = {
-        "doktyp": "sfs", "sort": "datum", "sortorder": "desc",
-        "utformat": "json", "a": "s", "p": page,
-    }
-    resp = SESSION.get(url, params=params, timeout=30)
-    resp.raise_for_status()
-    data = resp.json()
-    return data.get("dokumentlista", data)
-
-
-def fetch_document_status(dok_id: str) -> dict:
-    url = f"{BASE_URL}/dokumentstatus/{dok_id}.json"
-    resp = SESSION.get(url, timeout=30)
-    resp.raise_for_status()
-    data = resp.json()
-    return data.get("dokumentstatus", data)
-
-# ---------------------------------------------------------------------------
-# Lagring
-# ---------------------------------------------------------------------------
-
-def _safe_name(dok_id: str) -> str:
-    return dok_id.replace("/", "_").replace("\\", "_")
-
-
-def save_raw(dok_id: str, data: dict) -> Path:
-    path = RAW_DIR / f"{_safe_name(dok_id)}.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    return path
-
-
-def load_state() -> dict:
-    if STATE_FILE.exists():
-        with open(STATE_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {"last_systemdatum": "2020-01-01 00:00:00", "last_run": None, "total_documents": 0}
-
-
-def save_state(state: dict):
-    STATE_DIR.mkdir(parents=True, exist_ok=True)
-    state["last_run"] = datetime.now(timezone.utc).isoformat()
-    with open(STATE_FILE, "w", encoding="utf-8") as f:
-        json.dump(state, f, ensure_ascii=False, indent=2)
-
-# ---------------------------------------------------------------------------
-# Full crawl
-# ---------------------------------------------------------------------------
-
-def full_crawl(start_page=1, max_pages=None, skip_existing=True, dry_run=False) -> dict:
-    stats = {
-        "fetched": 0, "skipped": 0, "errors": 0, "error_details": [],
-        "total_pages": 0, "total_documents_api": 0,
-        "start_time": datetime.now(timezone.utc).isoformat(),
-    }
-
-    log.info("Hämtar dokumentlista, sida %d...", start_page)
-    first_result = fetch_document_list(start_page)
-    total_pages = int(first_result.get("@sidor", 1))
-    total_docs = int(first_result.get("@traffar", 0))
-    stats["total_pages"] = total_pages
-    stats["total_documents_api"] = total_docs
-
-    end_page = total_pages if max_pages is None else min(start_page + max_pages - 1, total_pages)
-    log.info("Totalt %d dokument på %d sidor. Hämtar sida %d–%d.", total_docs, total_pages, start_page, end_page)
-
-    if dry_run:
-        log.info("DRY RUN — avslutar.")
-        return stats
-
-    page = start_page
-    while page <= end_page:
-        if page == start_page:
-            result = first_result
-        else:
-            time.sleep(REQUEST_DELAY)
-            try:
-                result = fetch_document_list(page)
-            except requests.RequestException as e:
-                log.error("Sida %d: %s", page, e)
-                stats["errors"] += 1
-                stats["error_details"].append({"page": page, "error": str(e)})
-                page += 1
-                continue
-
-        documents = result.get("dokument", [])
-        if not documents:
-            log.warning("Sida %d tom — avslutar.", page)
-            break
-
-        for doc in documents:
-            dok_id = doc.get("dok_id", "")
-            if not dok_id:
-                continue
-
-            raw_path = RAW_DIR / f"{_safe_name(dok_id)}.json"
-            if skip_existing and raw_path.exists():
-                stats["skipped"] += 1
-                continue
-
-            time.sleep(REQUEST_DELAY)
-            try:
-                full_doc = fetch_document_status(dok_id)
-                save_raw(dok_id, full_doc)
-                stats["fetched"] += 1
-                if stats["fetched"] % 100 == 0:
-                    log.info("Framsteg: %d hämtade, %d hoppade, %d fel (sida %d/%d)",
-                             stats["fetched"], stats["skipped"], stats["errors"], page, end_page)
-            except (requests.RequestException, json.JSONDecodeError, KeyError) as e:
-                log.error("%s: %s", dok_id, e)
-                stats["errors"] += 1
-                stats["error_details"].append({"dok_id": dok_id, "error": str(e)})
-
-        page += 1
-
-    stats["end_time"] = datetime.now(timezone.utc).isoformat()
-
-    state = load_state()
-    state["total_documents"] = stats["fetched"] + stats["skipped"]
-    save_state(state)
-
-    report_path = STATE_DIR / "crawl_report.json"
-    report_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(report_path, "w", encoding="utf-8") as f:
-        json.dump(stats, f, ensure_ascii=False, indent=2)
-
-    log.info("Crawl klar: %d hämtade, %d hoppade, %d fel.", stats["fetched"], stats["skipped"], stats["errors"])
-    return stats
-
-# ---------------------------------------------------------------------------
-# Inkrementell uppdatering
-# ---------------------------------------------------------------------------
-
-def incremental_update() -> dict:
-    state = load_state()
-    last_known = state["last_systemdatum"]
-    stats = {"new": 0, "updated": 0, "errors": 0, "new_dok_ids": [], "updated_dok_ids": [],
-             "start_time": datetime.now(timezone.utc).isoformat()}
-
-    log.info("Inkrementell uppdatering. Senast: %s", last_known)
-    newest = last_known
-
-    for page in range(1, 11):
-        time.sleep(REQUEST_DELAY)
+    for key in keys:
+        raw_value = document_list.get(key)
+        if raw_value is None:
+            continue
         try:
-            result = fetch_document_list(page)
-        except requests.RequestException as e:
-            log.error("Sida %d: %s", page, e)
-            stats["errors"] += 1
-            break
+            return int(raw_value)
+        except (TypeError, ValueError):
+            return None
+    return None
 
-        documents = result.get("dokument", [])
-        if not documents:
-            break
 
-        found_old = False
-        for doc in documents:
-            dok_id = doc.get("dok_id", "")
-            systemdatum = doc.get("systemdatum", doc.get("publicerad", ""))
-            if not dok_id or not systemdatum:
-                continue
-            if systemdatum <= last_known:
-                found_old = True
-                break
-            if systemdatum > newest:
-                newest = systemdatum
+def _first_non_empty(document: dict[str, Any], *keys: str) -> str:
+    for key in keys:
+        value = document.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
 
-            raw_path = RAW_DIR / f"{_safe_name(dok_id)}.json"
-            is_update = raw_path.exists()
 
-            time.sleep(REQUEST_DELAY)
+def _extract_ikraft_value(document: dict[str, Any]) -> str | None:
+    for key in (IKRAFT_KEY, "ikrafttradandedatum"):
+        value = document.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _normalize_iso_date(raw_value: str | None) -> str | None:
+    if raw_value is None:
+        return None
+
+    value = raw_value.strip()
+    if not value or value == "0000-00-00":
+        return None
+
+    match = re.match(r"^(\d{4}-\d{2}-\d{2})", value)
+    if match:
+        try:
+            return date.fromisoformat(match.group(1)).isoformat()
+        except ValueError:
+            return None
+
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return parsed.date().isoformat()
+    except ValueError:
+        return None
+
+
+def _sanitize_filename_stem(stem: str) -> str:
+    cleaned = stem.replace(":", "-")
+    cleaned = re.sub(r"[\\/:*?\"<>|]", "_", cleaned)
+    return cleaned or "unknown"
+
+
+def _is_document_inactive(document: dict[str, Any]) -> bool:
+    boolean_keys = (
+        "upphavd",
+        "upph\u00e4vd",
+        "gallrad",
+        "inaktiv",
+        "upphort",
+        "upph\u00f6rt",
+    )
+    for key in boolean_keys:
+        value = document.get(key)
+        if isinstance(value, bool):
+            if value:
+                return True
+            continue
+        if isinstance(value, (int, float)) and int(value) == 1:
+            return True
+        if isinstance(value, str):
+            lowered = value.strip().lower()
+            if lowered in {"1", "true", "ja", "j", "upphavd", "upph\u00e4vd", "inaktiv", "upphort", "upph\u00f6rt"}:
+                return True
+
+    for key in ("status", "forfattningsstatus", "rattstatus"):
+        value = document.get(key)
+        if isinstance(value, str):
+            lowered = value.strip().lower()
+            if "upph" in lowered or "inaktiv" in lowered:
+                return True
+
+    return False
+
+
+class SfsFetcher:
+    """Fetcher for consolidated SFS documents from Riksdagen API."""
+
+    def __init__(
+        self,
+        config_path: str | Path = "config/sources.yaml",
+        *,
+        session: requests.Session | None = None,
+    ) -> None:
+        self.config = load_sources_config(config_path)
+
+        api_cfg = self.config["riksdagen_api"]
+        sfs_cfg = api_cfg["sfs"]
+        rate_cfg = self.config.get("rate_limiting", {})
+        http_cfg = self.config.get("http", {})
+        progress_cfg = self.config.get("progress", {})
+
+        self.base_url = str(api_cfg["base_url"])
+        self.list_url = _join_url(self.base_url, str(sfs_cfg["list_endpoint"]))
+        self.document_html_template = str(sfs_cfg["document_html_endpoint"])
+
+        self.doktyp = str(sfs_cfg["doktyp"])
+        self.utformat = str(sfs_cfg["utformat"])
+        self.pagesize = int(sfs_cfg["pagesize"])
+
+        self.output_dir = Path(str(sfs_cfg["output_dir"]))
+        self.errors_path = Path(str(sfs_cfg["errors_file"]))
+        self.consolidation_source = str(sfs_cfg.get("consolidation_source", "rk"))
+        self.only_active = bool(sfs_cfg.get("only_active", False))
+
+        self.delay_between = float(rate_cfg.get("delay_between_requests_s", 1.0))
+        self.max_retries = int(rate_cfg.get("max_retries", 3))
+        self.retry_backoff_base_s = float(rate_cfg.get("retry_backoff_base_s", 1.0))
+        self.timeout = float(rate_cfg.get("request_timeout_s", 30))
+        self.log_every = int(progress_cfg.get("log_every_n_documents", 100))
+
+        self.headers = {
+            "User-Agent": str(http_cfg.get("user_agent", "paragrafenai-fetcher/0.1")),
+            "Accept-Encoding": str(http_cfg.get("accept_encoding", "gzip, deflate")),
+        }
+
+        self.session = session if session is not None else requests.Session()
+
+    def _append_error(self, payload: dict[str, Any]) -> None:
+        try:
+            self.errors_path.parent.mkdir(parents=True, exist_ok=True)
+            with self.errors_path.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        except OSError as exc:
+            logger.critical("Failed writing errors file %s: %s", self.errors_path, exc)
+            raise SystemExit(1) from exc
+
+    def _write_json_file(self, path: Path, payload: dict[str, Any]) -> None:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("w", encoding="utf-8") as fh:
+                json.dump(payload, fh, ensure_ascii=False, indent=2)
+        except OSError as exc:
+            logger.critical("Failed writing output file %s: %s", path, exc)
+            raise SystemExit(1) from exc
+
+    def _request_with_retry(self, *, url: str, params: dict[str, Any] | None) -> requests.Response:
+        last_exc: Exception | None = None
+        for attempt in range(1, self.max_retries + 1):
             try:
-                full_doc = fetch_document_status(dok_id)
-                save_raw(dok_id, full_doc)
-                if is_update:
-                    stats["updated"] += 1
-                    stats["updated_dok_ids"].append(dok_id)
-                else:
-                    stats["new"] += 1
-                    stats["new_dok_ids"].append(dok_id)
-                log.info("%s: %s", "Uppdaterad" if is_update else "Ny", dok_id)
-            except requests.RequestException as e:
-                log.error("%s: %s", dok_id, e)
-                stats["errors"] += 1
+                response = self.session.get(
+                    url,
+                    headers=self.headers,
+                    params=params,
+                    timeout=self.timeout,
+                )
+                response.raise_for_status()
+                return response
+            except (requests.Timeout, requests.ConnectionError, requests.HTTPError) as exc:
+                last_exc = exc
+                if attempt >= self.max_retries:
+                    break
+                time.sleep(self.retry_backoff_base_s * (2 ** (attempt - 1)))
 
-        if found_old:
-            break
+        raise FetchError(str(last_exc) if last_exc else "Unknown request failure")
 
-    state["last_systemdatum"] = newest
-    save_state(state)
-    stats["end_time"] = datetime.now(timezone.utc).isoformat()
-    log.info("Klar: %d nya, %d uppdaterade, %d fel.", stats["new"], stats["updated"], stats["errors"])
-    return stats
+    def _request_json_with_retry(self, *, url: str, params: dict[str, Any] | None) -> dict[str, Any]:
+        last_exc: Exception | None = None
 
-# ---------------------------------------------------------------------------
-# Enskilt dokument
-# ---------------------------------------------------------------------------
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                response = self.session.get(
+                    url,
+                    headers=self.headers,
+                    params=params,
+                    timeout=self.timeout,
+                )
+                response.raise_for_status()
+                payload = response.json()
+                if not isinstance(payload, dict):
+                    raise ValueError("Response JSON must be a mapping.")
+                return payload
+            except (requests.Timeout, requests.ConnectionError, requests.HTTPError) as exc:
+                last_exc = exc
+            except ValueError as exc:
+                last_exc = exc
 
-def fetch_single(dok_id: str) -> dict:
-    log.info("Hämtar %s...", dok_id)
-    full_doc = fetch_document_status(dok_id)
-    path = save_raw(dok_id, full_doc)
-    log.info("Sparat: %s", path)
-    return full_doc
+            if attempt < self.max_retries:
+                time.sleep(self.retry_backoff_base_s * (2 ** (attempt - 1)))
 
-# ---------------------------------------------------------------------------
-# Verifiering
-# ---------------------------------------------------------------------------
+        if isinstance(last_exc, ValueError):
+            raise InvalidJsonResponseError(str(last_exc)) from last_exc
+        raise FetchError(str(last_exc) if last_exc else "Unknown JSON request failure")
 
-def verify_crawl() -> dict:
-    local_count = len(list(RAW_DIR.glob("*.json")))
-    result = fetch_document_list(1)
-    api_count = int(result.get("@traffar", 0))
-    report = {
-        "local_files": local_count, "api_total": api_count,
-        "coverage_pct": round(local_count / api_count * 100, 2) if api_count else 0,
-        "missing": api_count - local_count,
-        "verified_at": datetime.now(timezone.utc).isoformat(),
-    }
-    log.info("Verifiering: %d/%d (%.1f%%)", report["local_files"], report["api_total"], report["coverage_pct"])
-    return report
+    def fetch_all(self) -> dict[str, Any]:
+        """Fetch all SFS documents from paginated list API and save raw JSON files."""
+        started_at = datetime.now(timezone.utc)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.errors_path.parent.mkdir(parents=True, exist_ok=True)
 
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
+        summary: dict[str, Any] = {
+            "saved": 0,
+            "skipped_existing": 0,
+            "skipped_inactive": 0,
+            "errors": 0,
+            "processed_documents": 0,
+            "pages_fetched": 0,
+            "started_at": started_at.isoformat(),
+        }
 
-def main():
-    parser = argparse.ArgumentParser(description="SFS-fetcher — paragrafen.ai")
-    sub = parser.add_subparsers(dest="command")
+        page = 1
+        consecutive_page_failures = 0
 
-    cp = sub.add_parser("crawl", help="Full initial crawl")
-    cp.add_argument("--start-page", type=int, default=1)
-    cp.add_argument("--max-pages", type=int, default=None)
-    cp.add_argument("--no-skip", action="store_true")
-    cp.add_argument("--dry-run", action="store_true")
+        while True:
+            params: dict[str, Any] = {
+                "doktyp": self.doktyp,
+                "utformat": self.utformat,
+                "pagesize": self.pagesize,
+                "p": page,
+            }
 
-    sub.add_parser("update", help="Inkrementell uppdatering")
+            try:
+                page_payload = self._request_json_with_retry(url=self.list_url, params=params)
+            except (FetchError, InvalidJsonResponseError) as exc:
+                summary["errors"] += 1
+                self._append_error(
+                    {
+                        "source": "sfs_list",
+                        "page": page,
+                        "error": str(exc),
+                        "fetched_at": datetime.now(timezone.utc).isoformat(),
+                    }
+                )
+                consecutive_page_failures += 1
+                if consecutive_page_failures >= self.max_retries:
+                    break
+                page += 1
+                if self.delay_between > 0:
+                    time.sleep(self.delay_between)
+                continue
 
-    sp = sub.add_parser("single", help="Hämta enskilt dokument")
-    sp.add_argument("dok_id", help="t.ex. sfs-2017-900")
+            summary["pages_fetched"] += 1
+            consecutive_page_failures = 0
+            documents = _extract_documents(page_payload)
 
-    sub.add_parser("verify", help="Verifiera crawl")
+            for document in documents:
+                summary["processed_documents"] += 1
 
-    args = parser.parse_args()
+                if self.only_active and _is_document_inactive(document):
+                    summary["skipped_inactive"] += 1
+                    continue
 
-    if args.command == "crawl":
-        s = full_crawl(args.start_page, args.max_pages, not args.no_skip, args.dry_run)
-        print(json.dumps(s, indent=2, ensure_ascii=False))
-    elif args.command == "update":
-        s = incremental_update()
-        print(json.dumps(s, indent=2, ensure_ascii=False))
-    elif args.command == "single":
-        doc = fetch_single(args.dok_id)
-        print(f"Hämtat: {args.dok_id} ({len(json.dumps(doc)):,} bytes)")
-    elif args.command == "verify":
-        r = verify_crawl()
-        print(json.dumps(r, indent=2, ensure_ascii=False))
-    else:
-        parser.print_help()
+                dok_id = _first_non_empty(document, "dok_id", "id")
+                if not dok_id:
+                    summary["errors"] += 1
+                    self._append_error(
+                        {
+                            "source": "sfs_document",
+                            "page": page,
+                            "error": "Missing dok_id.",
+                            "fetched_at": datetime.now(timezone.utc).isoformat(),
+                        }
+                    )
+                    continue
 
+                beteckning = _first_non_empty(document, "beteckning")
+                titel = _first_non_empty(document, "titel")
+                datum_raw = _first_non_empty(document, "datum")
+                datum = _normalize_iso_date(datum_raw) or datum_raw
 
-if __name__ == "__main__":
-    main()
+                normalized_sfs_nr = normalize_sfs_number(beteckning)
+                if not normalized_sfs_nr:
+                    logger.warning("Missing SFS beteckning for dok_id=%s; using dok_id as filename.", dok_id)
+                    normalized_sfs_nr = dok_id
+
+                out_stem = _sanitize_filename_stem(normalized_sfs_nr)
+                out_path = self.output_dir / f"{out_stem}.json"
+                if out_path.exists():
+                    summary["skipped_existing"] += 1
+                    continue
+
+                html_url = _join_url(self.base_url, self.document_html_template.format(dok_id=dok_id))
+                try:
+                    html_response = self._request_with_retry(url=html_url, params=None)
+                except FetchError as exc:
+                    summary["errors"] += 1
+                    self._append_error(
+                        {
+                            "source": "sfs_document_html",
+                            "dok_id": dok_id,
+                            "sfs_nr": normalized_sfs_nr,
+                            "error": str(exc),
+                            "fetched_at": datetime.now(timezone.utc).isoformat(),
+                        }
+                    )
+                    continue
+
+                html_content = html_response.text.strip()
+                fetched_at = datetime.now(timezone.utc)
+
+                ikraft_raw = _extract_ikraft_value(document)
+                ikrafttradedatum = _normalize_iso_date(ikraft_raw)
+                if ikrafttradedatum:
+                    ikraft_date = date.fromisoformat(ikrafttradedatum)
+                    if ikraft_date > fetched_at.date():
+                        logger.warning(
+                            "Future ikrafttr\u00e4dandedatum for dok_id=%s: %s > %s",
+                            dok_id,
+                            ikrafttradedatum,
+                            fetched_at.date().isoformat(),
+                        )
+
+                raw_payload: dict[str, Any] = {
+                    "sfs_nr": normalized_sfs_nr,
+                    "dok_id": dok_id,
+                    "titel": titel,
+                    "datum": datum,
+                    IKRAFT_KEY: ikrafttradedatum,
+                    "consolidation_source": self.consolidation_source,
+                    "source_url": html_url,
+                    "html_content": html_content,
+                    "html_available": bool(html_content),
+                    "fetched_at": fetched_at.isoformat(),
+                }
+
+                self._write_json_file(out_path, raw_payload)
+                summary["saved"] += 1
+
+                if self.log_every > 0 and summary["processed_documents"] % self.log_every == 0:
+                    logger.info(
+                        "Processed SFS documents=%s saved=%s errors=%s",
+                        summary["processed_documents"],
+                        summary["saved"],
+                        summary["errors"],
+                    )
+
+                if self.delay_between > 0:
+                    time.sleep(self.delay_between)
+
+            remaining = _extract_remaining(page_payload)
+            if remaining == 0:
+                break
+            if remaining is None and not documents:
+                break
+
+            page += 1
+            if self.delay_between > 0:
+                time.sleep(self.delay_between)
+
+        summary["finished_at"] = datetime.now(timezone.utc).isoformat()
+        return summary
