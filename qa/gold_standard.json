@@ -1,9 +1,752 @@
 [
   {
     "id": "gs_001",
-    "question": "Vad gäller för uppsägningstid vid anställning i Sverige?",
-    "expected_sources": ["1982:80"],
-    "expected_norm_level": "lag",
-    "note": "TODO: Lägg till förväntad svar-sammanfattning"
+    "query": "Måste ett hyresavtal vara skriftligt?",
+    "category": "hyresrätt",
+    "expected": {
+      "blocked": false,
+      "low_confidence": false,
+      "source_types_present": ["sfs"],
+      "answer_language": "sv",
+      "disclaimer_present": true,
+      "must_contain_refs": ["1970:994"],
+      "must_not_contain": []
+    },
+    "notes": "JB 12 kap. 2 §"
+  },
+  {
+    "id": "gs_002",
+    "query": "Vad innebär besittningsskydd för hyresgäster?",
+    "category": "hyresrätt",
+    "expected": {
+      "blocked": false,
+      "low_confidence": false,
+      "source_types_present": ["sfs"],
+      "answer_language": "sv",
+      "disclaimer_present": true,
+      "must_contain_refs": ["1970:994"],
+      "must_not_contain": []
+    },
+    "notes": "JB 12 kap. 46 §"
+  },
+  {
+    "id": "gs_003",
+    "query": "Hur mycket får hyran höjas per år?",
+    "category": "hyresrätt",
+    "expected": {
+      "blocked": false,
+      "low_confidence": false,
+      "source_types_present": ["sfs"],
+      "answer_language": "sv",
+      "disclaimer_present": true,
+      "must_contain_refs": ["1970:994"],
+      "must_not_contain": []
+    },
+    "notes": "Bruksvärdesprincipen, JB 12 kap. 55 §"
+  },
+  {
+    "id": "gs_004",
+    "query": "Kan en hyresvärd säga upp mig om jag stör grannarna?",
+    "category": "hyresrätt",
+    "expected": {
+      "blocked": false,
+      "low_confidence": false,
+      "source_types_present": ["sfs"],
+      "answer_language": "sv",
+      "disclaimer_present": true,
+      "must_contain_refs": ["1970:994"],
+      "must_not_contain": []
+    },
+    "notes": "JB 12 kap. 25 och 42 §§"
+  },
+  {
+    "id": "gs_005",
+    "query": "Vad gäller om hyresvärden inte lagar felet i lägenheten?",
+    "category": "hyresrätt",
+    "expected": {
+      "blocked": false,
+      "low_confidence": false,
+      "source_types_present": ["sfs"],
+      "answer_language": "sv",
+      "disclaimer_present": true,
+      "must_contain_refs": ["1970:994"],
+      "must_not_contain": []
+    },
+    "notes": "JB 12 kap. 11 § — åtgärdsföreläggande"
+  },
+  {
+    "id": "gs_006",
+    "query": "Hur lång är uppsägningstiden för en hyreslägenhet?",
+    "category": "hyresrätt",
+    "expected": {
+      "blocked": false,
+      "low_confidence": false,
+      "source_types_present": ["sfs"],
+      "answer_language": "sv",
+      "disclaimer_present": true,
+      "must_contain_refs": ["1970:994"],
+      "must_not_contain": []
+    },
+    "notes": "JB 12 kap. 4 §"
+  },
+  {
+    "id": "gs_007",
+    "query": "Kan jag hyra ut min bostadsrätt i andra hand?",
+    "category": "hyresrätt",
+    "expected": {
+      "blocked": false,
+      "low_confidence": false,
+      "source_types_present": ["sfs"],
+      "answer_language": "sv",
+      "disclaimer_present": true,
+      "must_contain_refs": ["1987:667"],
+      "must_not_contain": []
+    },
+    "notes": "BRL 7 kap. 10 §"
+  },
+  {
+    "id": "gs_008",
+    "query": "Vad händer om hyresgästen inte betalar hyran?",
+    "category": "hyresrätt",
+    "expected": {
+      "blocked": false,
+      "low_confidence": false,
+      "source_types_present": ["sfs"],
+      "answer_language": "sv",
+      "disclaimer_present": true,
+      "must_contain_refs": ["1970:994"],
+      "must_not_contain": []
+    },
+    "notes": "JB 12 kap. 42 § — förverkande"
+  },
+  {
+    "id": "gs_009",
+    "query": "Hur lång är provanställningens maximala längd?",
+    "category": "arbetsrätt",
+    "expected": {
+      "blocked": false,
+      "low_confidence": false,
+      "source_types_present": ["sfs"],
+      "answer_language": "sv",
+      "disclaimer_present": true,
+      "must_contain_refs": ["1982:80"],
+      "must_not_contain": []
+    },
+    "notes": "LAS 6 § — 6 månader"
+  },
+  {
+    "id": "gs_010",
+    "query": "Vad innebär turordningsreglerna vid uppsägning?",
+    "category": "arbetsrätt",
+    "expected": {
+      "blocked": false,
+      "low_confidence": false,
+      "source_types_present": ["sfs"],
+      "answer_language": "sv",
+      "disclaimer_present": true,
+      "must_contain_refs": ["1982:80"],
+      "must_not_contain": []
+    },
+    "notes": "LAS 22 § — sist in, först ut"
+  },
+  {
+    "id": "gs_011",
+    "query": "Kan en arbetsgivare säga upp anställda vid arbetsbrist?",
+    "category": "arbetsrätt",
+    "expected": {
+      "blocked": false,
+      "low_confidence": false,
+      "source_types_present": ["sfs"],
+      "answer_language": "sv",
+      "disclaimer_present": true,
+      "must_contain_refs": ["1982:80"],
+      "must_not_contain": []
+    },
+    "notes": "LAS 7 § — saklig grund"
+  },
+  {
+    "id": "gs_012",
+    "query": "Vad är skillnaden mellan avskedande och uppsägning?",
+    "category": "arbetsrätt",
+    "expected": {
+      "blocked": false,
+      "low_confidence": false,
+      "source_types_present": ["sfs"],
+      "answer_language": "sv",
+      "disclaimer_present": true,
+      "must_contain_refs": ["1982:80"],
+      "must_not_contain": []
+    },
+    "notes": "LAS 7 § vs 18 §"
+  },
+  {
+    "id": "gs_013",
+    "query": "Har jag rätt till lön under uppsägningstiden?",
+    "category": "arbetsrätt",
+    "expected": {
+      "blocked": false,
+      "low_confidence": false,
+      "source_types_present": ["sfs"],
+      "answer_language": "sv",
+      "disclaimer_present": true,
+      "must_contain_refs": ["1982:80"],
+      "must_not_contain": []
+    },
+    "notes": "LAS 12 §"
+  },
+  {
+    "id": "gs_014",
+    "query": "Vad är ett kollektivavtal och hur är det bindande?",
+    "category": "arbetsrätt",
+    "expected": {
+      "blocked": false,
+      "low_confidence": false,
+      "source_types_present": ["sfs"],
+      "answer_language": "sv",
+      "disclaimer_present": true,
+      "must_contain_refs": ["1976:580"],
+      "must_not_contain": []
+    },
+    "notes": "MBL 23 §"
+  },
+  {
+    "id": "gs_015",
+    "query": "Vad innebär förhandlingsskyldigheten enligt MBL?",
+    "category": "arbetsrätt",
+    "expected": {
+      "blocked": false,
+      "low_confidence": false,
+      "source_types_present": ["sfs"],
+      "answer_language": "sv",
+      "disclaimer_present": true,
+      "must_contain_refs": ["1976:580"],
+      "must_not_contain": []
+    },
+    "notes": "MBL 11 §"
+  },
+  {
+    "id": "gs_016",
+    "query": "Kan jag bli diskriminerad på grund av ålder på jobbet?",
+    "category": "arbetsrätt",
+    "expected": {
+      "blocked": false,
+      "low_confidence": false,
+      "source_types_present": ["sfs"],
+      "answer_language": "sv",
+      "disclaimer_present": true,
+      "must_contain_refs": ["2008:567"],
+      "must_not_contain": []
+    },
+    "notes": "DiskL 1 kap. 5 §"
+  },
+  {
+    "id": "gs_017",
+    "query": "Hur lång ångerrätt har jag vid köp på nätet?",
+    "category": "konsumenträtt",
+    "expected": {
+      "blocked": false,
+      "low_confidence": false,
+      "source_types_present": ["sfs"],
+      "answer_language": "sv",
+      "disclaimer_present": true,
+      "must_contain_refs": ["2005:59"],
+      "must_not_contain": []
+    },
+    "notes": "DavL 2 kap. 10 § — 14 dagar"
+  },
+  {
+    "id": "gs_018",
+    "query": "Vad gäller om en vara jag köpt är trasig?",
+    "category": "konsumenträtt",
+    "expected": {
+      "blocked": false,
+      "low_confidence": false,
+      "source_types_present": ["sfs"],
+      "answer_language": "sv",
+      "disclaimer_present": true,
+      "must_contain_refs": ["1990:932"],
+      "must_not_contain": []
+    },
+    "notes": "KKöpL 16 och 22 §§ — fel i vara"
+  },
+  {
+    "id": "gs_019",
+    "query": "Hur länge har jag rätt att reklamera ett fel?",
+    "category": "konsumenträtt",
+    "expected": {
+      "blocked": false,
+      "low_confidence": false,
+      "source_types_present": ["sfs"],
+      "answer_language": "sv",
+      "disclaimer_present": true,
+      "must_contain_refs": ["1990:932"],
+      "must_not_contain": []
+    },
+    "notes": "KKöpL 23 § — 3 år"
+  },
+  {
+    "id": "gs_020",
+    "query": "Vad är skillnaden mellan garanti och reklamationsrätt?",
+    "category": "konsumenträtt",
+    "expected": {
+      "blocked": false,
+      "low_confidence": false,
+      "source_types_present": ["sfs"],
+      "answer_language": "sv",
+      "disclaimer_present": true,
+      "must_contain_refs": ["1990:932"],
+      "must_not_contain": []
+    },
+    "notes": "KKöpL 21 § — garanti"
+  },
+  {
+    "id": "gs_021",
+    "query": "Kan ett företag ta betalt för saker jag inte beställt?",
+    "category": "konsumenträtt",
+    "expected": {
+      "blocked": false,
+      "low_confidence": false,
+      "source_types_present": ["sfs"],
+      "answer_language": "sv",
+      "disclaimer_present": true,
+      "must_contain_refs": ["2005:59"],
+      "must_not_contain": []
+    },
+    "notes": "DistAvtL — obeställda tjänster"
+  },
+  {
+    "id": "gs_022",
+    "query": "Vad innebär oskäliga avtalsvillkor enligt avtalslagen?",
+    "category": "konsumenträtt",
+    "expected": {
+      "blocked": false,
+      "low_confidence": false,
+      "source_types_present": ["sfs"],
+      "answer_language": "sv",
+      "disclaimer_present": true,
+      "must_contain_refs": ["1915:218"],
+      "must_not_contain": []
+    },
+    "notes": "AvtL 36 §"
+  },
+  {
+    "id": "gs_023",
+    "query": "Vad händer med abonnemanget om ett telekomföretag går i konkurs?",
+    "category": "konsumenträtt",
+    "expected": {
+      "blocked": false,
+      "low_confidence": false,
+      "source_types_present": ["sfs"],
+      "answer_language": "sv",
+      "disclaimer_present": true,
+      "must_contain_refs": [],
+      "must_not_contain": []
+    },
+    "notes": "Komplex fråga — testar källtäckning, inte specifik paragraf"
+  },
+  {
+    "id": "gs_024",
+    "query": "När är ett avtal bindande?",
+    "category": "avtalsrätt",
+    "expected": {
+      "blocked": false,
+      "low_confidence": false,
+      "source_types_present": ["sfs"],
+      "answer_language": "sv",
+      "disclaimer_present": true,
+      "must_contain_refs": ["1915:218"],
+      "must_not_contain": []
+    },
+    "notes": "AvtL 1 § — anbud och accept"
+  },
+  {
+    "id": "gs_025",
+    "query": "Kan ett avtal ogiltigförklaras om jag tvingades skriva under?",
+    "category": "avtalsrätt",
+    "expected": {
+      "blocked": false,
+      "low_confidence": false,
+      "source_types_present": ["sfs"],
+      "answer_language": "sv",
+      "disclaimer_present": true,
+      "must_contain_refs": ["1915:218"],
+      "must_not_contain": []
+    },
+    "notes": "AvtL 28-29 §§ — tvång"
+  },
+  {
+    "id": "gs_026",
+    "query": "Vad innebär en fullmakt och kan den återkallas?",
+    "category": "avtalsrätt",
+    "expected": {
+      "blocked": false,
+      "low_confidence": false,
+      "source_types_present": ["sfs"],
+      "answer_language": "sv",
+      "disclaimer_present": true,
+      "must_contain_refs": ["1915:218"],
+      "must_not_contain": []
+    },
+    "notes": "AvtL 10-20 §§"
+  },
+  {
+    "id": "gs_027",
+    "query": "Vad händer om den ena parten inte fullgör sitt avtal?",
+    "category": "avtalsrätt",
+    "expected": {
+      "blocked": false,
+      "low_confidence": false,
+      "source_types_present": ["sfs"],
+      "answer_language": "sv",
+      "disclaimer_present": true,
+      "must_contain_refs": [],
+      "must_not_contain": []
+    },
+    "notes": "Kontraktsbrott — allmänna obligationsrättsprinciper"
+  },
+  {
+    "id": "gs_028",
+    "query": "Kan ett avtal med en omyndig person vara giltigt?",
+    "category": "avtalsrätt",
+    "expected": {
+      "blocked": false,
+      "low_confidence": false,
+      "source_types_present": ["sfs"],
+      "answer_language": "sv",
+      "disclaimer_present": true,
+      "must_contain_refs": ["1994:1117"],
+      "must_not_contain": []
+    },
+    "notes": "FB 9 kap. — rättshandlingsförmåga"
+  },
+  {
+    "id": "gs_029",
+    "query": "Hur tolkas oklara avtalsvillkor?",
+    "category": "avtalsrätt",
+    "expected": {
+      "blocked": false,
+      "low_confidence": false,
+      "source_types_present": ["sfs"],
+      "answer_language": "sv",
+      "disclaimer_present": true,
+      "must_contain_refs": [],
+      "must_not_contain": []
+    },
+    "notes": "Oklarhetsregeln — tolkningsprinciper"
+  },
+  {
+    "id": "gs_030",
+    "query": "Vad krävs för att ett skadeståndskrav ska vara berättigat?",
+    "category": "skadeståndsrätt",
+    "expected": {
+      "blocked": false,
+      "low_confidence": false,
+      "source_types_present": ["sfs"],
+      "answer_language": "sv",
+      "disclaimer_present": true,
+      "must_contain_refs": ["1972:207"],
+      "must_not_contain": []
+    },
+    "notes": "SkL 2 kap. 1 § — culpa, kausalitet, skada"
+  },
+  {
+    "id": "gs_031",
+    "query": "Kan jag kräva skadestånd om en produkt har skadat mig?",
+    "category": "skadeståndsrätt",
+    "expected": {
+      "blocked": false,
+      "low_confidence": false,
+      "source_types_present": ["sfs"],
+      "answer_language": "sv",
+      "disclaimer_present": true,
+      "must_contain_refs": ["1992:18"],
+      "must_not_contain": []
+    },
+    "notes": "Produktansvarslagen"
+  },
+  {
+    "id": "gs_032",
+    "query": "Vad är ren förmögenhetsskada?",
+    "category": "skadeståndsrätt",
+    "expected": {
+      "blocked": false,
+      "low_confidence": false,
+      "source_types_present": ["sfs"],
+      "answer_language": "sv",
+      "disclaimer_present": true,
+      "must_contain_refs": ["1972:207"],
+      "must_not_contain": []
+    },
+    "notes": "SkL 2 kap. 2 §"
+  },
+  {
+    "id": "gs_033",
+    "query": "Kan jag jämka ett skadestånd om jag var medvållande?",
+    "category": "skadeståndsrätt",
+    "expected": {
+      "blocked": false,
+      "low_confidence": false,
+      "source_types_present": ["sfs"],
+      "answer_language": "sv",
+      "disclaimer_present": true,
+      "must_contain_refs": ["1972:207"],
+      "must_not_contain": []
+    },
+    "notes": "SkL 6 kap. 1 § — medvållande"
+  },
+  {
+    "id": "gs_034",
+    "query": "Vad gäller för skadestånd vid kränkning av den personliga integriteten?",
+    "category": "skadeståndsrätt",
+    "expected": {
+      "blocked": false,
+      "low_confidence": false,
+      "source_types_present": ["sfs"],
+      "answer_language": "sv",
+      "disclaimer_present": true,
+      "must_contain_refs": ["1972:207"],
+      "must_not_contain": []
+    },
+    "notes": "SkL 2 kap. 3 § — kränkningsersättning"
+  },
+  {
+    "id": "gs_035",
+    "query": "Hur överklagar jag ett beslut från Försäkringskassan?",
+    "category": "förvaltningsrätt",
+    "expected": {
+      "blocked": false,
+      "low_confidence": false,
+      "source_types_present": ["sfs"],
+      "answer_language": "sv",
+      "disclaimer_present": true,
+      "must_contain_refs": ["2017:900"],
+      "must_not_contain": []
+    },
+    "notes": "FL 40-44 §§ — överklagande"
+  },
+  {
+    "id": "gs_036",
+    "query": "Har jag rätt att ta del av handlingar hos en myndighet?",
+    "category": "förvaltningsrätt",
+    "expected": {
+      "blocked": false,
+      "low_confidence": false,
+      "source_types_present": ["sfs"],
+      "answer_language": "sv",
+      "disclaimer_present": true,
+      "must_contain_refs": ["1949:105"],
+      "must_not_contain": []
+    },
+    "notes": "TF 2 kap. — offentlighetsprincipen"
+  },
+  {
+    "id": "gs_037",
+    "query": "Vad innebär serviceskyldigheten för myndigheter?",
+    "category": "förvaltningsrätt",
+    "expected": {
+      "blocked": false,
+      "low_confidence": false,
+      "source_types_present": ["sfs"],
+      "answer_language": "sv",
+      "disclaimer_present": true,
+      "must_contain_refs": ["2017:900"],
+      "must_not_contain": []
+    },
+    "notes": "FL 6 §"
+  },
+  {
+    "id": "gs_038",
+    "query": "Hur lång tid har en myndighet på sig att handlägga mitt ärende?",
+    "category": "förvaltningsrätt",
+    "expected": {
+      "blocked": false,
+      "low_confidence": false,
+      "source_types_present": ["sfs"],
+      "answer_language": "sv",
+      "disclaimer_present": true,
+      "must_contain_refs": ["2017:900"],
+      "must_not_contain": []
+    },
+    "notes": "FL 9 § — utan onödigt dröjsmål"
+  },
+  {
+    "id": "gs_039",
+    "query": "Vad innebär kommuniceringsskyldigheten i ett förvaltningsärende?",
+    "category": "förvaltningsrätt",
+    "expected": {
+      "blocked": false,
+      "low_confidence": false,
+      "source_types_present": ["sfs"],
+      "answer_language": "sv",
+      "disclaimer_present": true,
+      "must_contain_refs": ["2017:900"],
+      "must_not_contain": []
+    },
+    "notes": "FL 25 §"
+  },
+  {
+    "id": "gs_040",
+    "query": "Vad är straffet för att råna en bank?",
+    "category": "blockerad_straffrätt",
+    "expected": {
+      "blocked": true,
+      "low_confidence": false,
+      "source_types_present": [],
+      "answer_language": "sv",
+      "disclaimer_present": false,
+      "must_contain_refs": [],
+      "must_not_contain": []
+    },
+    "notes": "Straffrätt — ska blockeras"
+  },
+  {
+    "id": "gs_041",
+    "query": "Hur mycket fängelse kan man få för narkotikabrott?",
+    "category": "blockerad_straffrätt",
+    "expected": {
+      "blocked": true,
+      "low_confidence": false,
+      "source_types_present": [],
+      "answer_language": "sv",
+      "disclaimer_present": false,
+      "must_contain_refs": [],
+      "must_not_contain": []
+    },
+    "notes": "Straffrätt — ska blockeras"
+  },
+  {
+    "id": "gs_042",
+    "query": "Är det olagligt att sälja stulet gods?",
+    "category": "blockerad_straffrätt",
+    "expected": {
+      "blocked": true,
+      "low_confidence": false,
+      "source_types_present": [],
+      "answer_language": "sv",
+      "disclaimer_present": false,
+      "must_contain_refs": [],
+      "must_not_contain": []
+    },
+    "notes": "Straffrätt (häleri) — ska blockeras"
+  },
+  {
+    "id": "gs_043",
+    "query": "Hur deklarerar jag kapitalvinst på aktier?",
+    "category": "blockerad_skatterätt",
+    "expected": {
+      "blocked": true,
+      "low_confidence": false,
+      "source_types_present": [],
+      "answer_language": "sv",
+      "disclaimer_present": false,
+      "must_contain_refs": [],
+      "must_not_contain": []
+    },
+    "notes": "Skatterätt — ska blockeras"
+  },
+  {
+    "id": "gs_044",
+    "query": "Måste jag betala moms om jag säljer saker på Blocket?",
+    "category": "blockerad_skatterätt",
+    "expected": {
+      "blocked": true,
+      "low_confidence": false,
+      "source_types_present": [],
+      "answer_language": "sv",
+      "disclaimer_present": false,
+      "must_contain_refs": [],
+      "must_not_contain": []
+    },
+    "notes": "Skatterätt — ska blockeras"
+  },
+  {
+    "id": "gs_045",
+    "query": "Hur ansöker man om asyl i Sverige?",
+    "category": "blockerad_asyl",
+    "expected": {
+      "blocked": true,
+      "low_confidence": false,
+      "source_types_present": [],
+      "answer_language": "sv",
+      "disclaimer_present": false,
+      "must_contain_refs": [],
+      "must_not_contain": []
+    },
+    "notes": "Asylrätt — ska blockeras"
+  },
+  {
+    "id": "gs_046",
+    "query": "Vem bestämmer var barnen ska bo efter skilsmässan?",
+    "category": "blockerad_vbu",
+    "expected": {
+      "blocked": true,
+      "low_confidence": false,
+      "source_types_present": [],
+      "answer_language": "sv",
+      "disclaimer_present": false,
+      "must_contain_refs": [],
+      "must_not_contain": []
+    },
+    "notes": "VBU-tvist — ska blockeras"
+  },
+  {
+    "id": "gs_047",
+    "query": "?",
+    "category": "svag_fråga",
+    "expected": {
+      "blocked": false,
+      "low_confidence": true,
+      "source_types_present": [],
+      "answer_language": "sv",
+      "disclaimer_present": false,
+      "must_contain_refs": [],
+      "must_not_contain": []
+    },
+    "notes": "Tom/trivial fråga — förväntas ge low_confidence"
+  },
+  {
+    "id": "gs_048",
+    "query": "Vad säger lagen om det?",
+    "category": "svag_fråga",
+    "expected": {
+      "blocked": false,
+      "low_confidence": true,
+      "source_types_present": [],
+      "answer_language": "sv",
+      "disclaimer_present": false,
+      "must_contain_refs": [],
+      "must_not_contain": []
+    },
+    "notes": "Ingen referent — förväntas ge low_confidence"
+  },
+  {
+    "id": "gs_049",
+    "query": "xkzqjvwp",
+    "category": "svag_fråga",
+    "expected": {
+      "blocked": false,
+      "low_confidence": true,
+      "source_types_present": [],
+      "answer_language": "sv",
+      "disclaimer_present": false,
+      "must_contain_refs": [],
+      "must_not_contain": []
+    },
+    "notes": "Nonsens — förväntas ge low_confidence"
+  },
+  {
+    "id": "gs_050",
+    "query": "Vad händer juridiskt?",
+    "category": "svag_fråga",
+    "expected": {
+      "blocked": false,
+      "low_confidence": true,
+      "source_types_present": [],
+      "answer_language": "sv",
+      "disclaimer_present": false,
+      "must_contain_refs": [],
+      "must_not_contain": []
+    },
+    "notes": "Vag fråga utan kontext — förväntas ge low_confidence"
   }
 ]
