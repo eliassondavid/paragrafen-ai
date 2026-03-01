@@ -1,4 +1,3 @@
-# index/norm_boost.py
 from __future__ import annotations
 
 import logging
@@ -16,6 +15,7 @@ class NormBoost:
     AUTHORITY_WEIGHTS = {
         "binding": 1.0,
         "guiding": 0.7,
+        "preparatory": 0.6,
         "persuasive": 0.4,
     }
 
@@ -58,7 +58,7 @@ class NormBoost:
 
             # Sort order:
             # 1) norm_score desc
-            # 2) authority_level: binding > guiding > persuasive
+            # 2) authority_level: binding > guiding > preparatory > persuasive
             # 3) stable: preserve original order
             authority_rank = self._authority_rank(authority_level)
             decorated.append((norm_score, authority_rank, idx, out_chunk))
@@ -91,10 +91,12 @@ class NormBoost:
     def _authority_rank(level: str) -> int:
         """
         Lower rank value = higher priority in tie-breaks.
-        binding (0) > guiding (1) > persuasive (2)
+        binding (0) > guiding (1) > preparatory (2) > persuasive (3)
         """
         if level == "binding":
             return 0
         if level == "guiding":
             return 1
-        return 2
+        if level == "preparatory":
+            return 2
+        return 3
