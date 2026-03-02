@@ -1,0 +1,133 @@
+# Manuellt verifierade lagar (lager 2 i legal_area-klassificering)
+# numbering_type_verified: true = YAML vinner vid konflikt med automatisk detektion
+laws:
+  "1949:381":
+    kortnamn: "FB"
+    legal_area: ["familjerätt", "arvsrätt"]
+    numbering_type: "relative"
+    numbering_type_verified: true
+  "1942:740":
+    kortnamn: "RB"
+    legal_area: ["processrätt"]
+    numbering_type: "relative"
+    numbering_type_verified: true
+  "1998:808":
+    kortnamn: "MB"
+    legal_area: ["miljörätt"]
+    numbering_type: "relative"
+    numbering_type_verified: true
+  "2005:551":
+    kortnamn: "ABL"
+    legal_area: ["associationsrätt", "bolagsrätt"]
+    numbering_type: "relative"
+    numbering_type_verified: true
+  "1970:994":
+    kortnamn: "JB"
+    legal_area: ["fastighetsrätt"]
+    numbering_type: "relative"
+    numbering_type_verified: true
+  "2010:900":
+    kortnamn: "PBL"
+    legal_area: ["plan- och byggrätt", "förvaltningsrätt"]
+    numbering_type: "relative"
+    numbering_type_verified: true
+  "2001:453":
+    kortnamn: "SoL"
+    legal_area: ["socialrätt"]
+    numbering_type: "relative"
+    numbering_type_verified: true
+  "1993:387":
+    kortnamn: "LSS"
+    legal_area: ["socialrätt", "funktionsnedsättning"]
+    numbering_type: "sequential"
+    numbering_type_verified: true
+  "2005:716":
+    kortnamn: "UtlL"
+    legal_area: ["migrationsrätt", "utlänningsrätt"]
+    numbering_type: "relative"
+    numbering_type_verified: true
+  "1991:900":
+    kortnamn: "KL"
+    legal_area: ["kommunalrätt", "förvaltningsrätt"]
+    numbering_type: "relative"
+    numbering_type_verified: true
+  "1915:218":
+    kortnamn: "AvtL"
+    legal_area: ["avtalsrätt", "civilrätt"]
+    numbering_type: "sequential"
+    numbering_type_verified: true
+  "1936:81":
+    kortnamn: "SkbrL"
+    legal_area: ["krediträtt", "civilrätt"]
+    numbering_type: "sequential"
+    numbering_type_verified: true
+  "1990:931":
+    kortnamn: "KöpL"
+    legal_area: ["köprätt", "avtalsrätt"]
+    numbering_type: "sequential"
+    numbering_type_verified: true
+  "1982:80":
+    kortnamn: "LAS"
+    legal_area: ["arbetsrätt"]
+    numbering_type: "sequential"
+    numbering_type_verified: true
+  "1981:131":
+    kortnamn: "RänteL"
+    legal_area: ["civilrätt", "krediträtt"]
+    numbering_type: "sequential"
+    numbering_type_verified: true
+  "2017:900":
+    kortnamn: "FL"
+    legal_area: ["förvaltningsrätt"]
+    numbering_type: "sequential"
+    numbering_type_verified: true
+  "1991:351":
+    kortnamn: "HandelsagentL"
+    legal_area: ["handelsrätt", "avtalsrätt"]
+    numbering_type: "sequential"
+    numbering_type_verified: true
+  "1991:1469":
+    kortnamn: "YGL"
+    legal_area: ["medierätt", "grundlag"]
+    numbering_type: "relative"
+    numbering_type_verified: true
+  "1974:152":
+    kortnamn: "RF"
+    legal_area: ["statsrätt", "grundlag"]
+    numbering_type: "relative"
+    numbering_type_verified: true
+  "1962:700":
+    kortnamn: "BrB"
+    legal_area: ["straffrätt"]
+    numbering_type: "relative"
+    numbering_type_verified: true
+  "1998:204":
+    kortnamn: "PuL"
+    legal_area: ["dataskydd", "förvaltningsrätt"]
+    numbering_type: "sequential"
+    numbering_type_verified: false
+  "2018:218":
+    kortnamn: "DSL"
+    legal_area: ["dataskydd"]
+    numbering_type: "sequential"
+    numbering_type_verified: false
+  "1999:1229":
+    kortnamn: "IL"
+    legal_area: ["skatterätt"]
+    numbering_type: "relative"
+    numbering_type_verified: true
+  "1960:729":
+    kortnamn: "URL"
+    legal_area: ["immaterialrätt", "upphovsrätt"]
+    numbering_type: "sequential"
+    numbering_type_verified: false
+  "1944:705":
+    kortnamn: "PreskrL"
+    legal_area: ["civilrätt"]
+    numbering_type: "sequential"
+    numbering_type_verified: true
+  "1972:207":
+    kortnamn: "SkadeståndsL"
+    legal_area: ["skadeståndsrätt", "civilrätt"]
+    numbering_type: "relative"
+    numbering_type_verified: true

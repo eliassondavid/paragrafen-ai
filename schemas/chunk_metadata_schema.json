@@ -1,0 +1,223 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "chunk_metadata_schema",
+  "title": "§AI Chunk Metadata Schema",
+  "description": "Gemensamt metadata-schema för alla chunk-typer i §AI. Baserat på arkitekturbeslut F3 (PRAXIS) och D2 (DOKTRIN) 2026-02-23.",
+  "version": "1.0.0",
+  "type": "object",
+
+  "required": [
+    "namespace",
+    "source_id",
+    "source_type",
+    "authority_level",
+    "legal_area",
+    "embedding_model",
+    "chunk_index",
+    "chunk_total"
+  ],
+
+  "properties": {
+
+    "namespace": {
+      "type": "string",
+      "description": "Unikt ID för chunken. Konvention per source_type: praxis::HFD_2022_ref-010_chunk_003 | doktrin::wennergren_2019_s042_chunk_001 | sfs::1949:381_6kap_chunk_001 | forarbete::sou_2023-45_s042_chunk_001",
+      "pattern": "^(praxis|doktrin|sfs|forarbete)::.+_chunk_\\d+$"
+    },
+
+    "source_id": {
+      "type": "string",
+      "description": "UUID v5 för källdokumentet (avgörande, verk, förordning eller förarbete)",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+
+    "source_type": {
+      "type": "string",
+      "description": "Källtyp — styr retrieval-filtrering i ChromaDB",
+      "enum": ["praxis", "doktrin", "sfs", "forarbete"]
+    },
+
+    "authority_level": {
+      "type": "string",
+      "description": "Normhierarkisk auktoritetsnivå. Styr viktning i norm_boost.py: binding > guiding > preparatory > persuasive",
+      "enum": ["binding", "guiding", "preparatory", "persuasive"]
+    },
+
+    "legal_area": {
+      "type": "array",
+      "description": "Normaliserad lista av rättsområden. Kontrollerad vokabulär från config/legal_areas.yaml",
+      "items": {
+        "type": "string"
+      }
+    },
+
+    "embedding_model": {
+      "type": "string",
+      "description": "Identifierare för embedding-modellen som användes. Krävs för migration-safety.",
+      "examples": ["intfloat/multilingual-e5-large", "KBLab/sentence-bert-swedish-cased"]
+    },
+
+    "chunk_index": {
+      "type": "integer",
+      "description": "Nollbaserat index för denna chunk inom källdokumentet",
+      "minimum": 0
+    },
+
+    "chunk_total": {
+      "type": "integer",
+      "description": "Totalt antal chunks för källdokumentet",
+      "minimum": 1
+    },
+
+    "references_to": {
+      "type": "array",
+      "description": "Typade kanter till andra källdokument. Bakåtkompatibel med enkel string-lista.",
+      "items": {
+        "oneOf": [
+          {
+            "type": "string",
+            "description": "Enkel namespace-referens (legacy)",
+            "examples": ["sfs::1949:381"]
+          },
+          {
+            "type": "object",
+            "description": "Typad kant (rekommenderad)",
+            "required": ["target", "relation_type"],
+            "properties": {
+              "target": {
+                "type": "string",
+                "description": "Namespace-ID för målresursen"
+              },
+              "relation_type": {
+                "type": "string",
+                "enum": ["cites", "amends", "repeals", "defines", "exempts", "motivated_by", "overturned_by", "upheld_by", "analogous_to"],
+                "description": "Relationstyp. Kontrollerad vokabulär utbyggbar per qura-learnings.md"
+              }
+            }
+          }
+        ]
+      }
+    },
+
+    "pinpoint": {
+      "type": "string",
+      "description": "Styckenummer eller sidreferens för precisionscitat. Obligatoriskt för praxis DOMSKÄL-chunks.",
+      "examples": ["stycke 14", "s. 42", "p. 14"]
+    },
+
+    "section": {
+      "type": "string",
+      "description": "Dokumentsektion. Används primärt för praxis.",
+      "enum": ["BAKGRUND", "DOMSKÄL", "DOMSLUT", "INLEDNING", "ÖVERVÄGANDEN", "FÖRSLAG", "SAMMANFATTNING", "BILAGOR", "ÖVRIGT"]
+    },
+
+    "domstol": {
+      "type": "string",
+      "description": "Domstolsbeteckning. Obligatoriskt för source_type=praxis.",
+      "enum": ["HD", "HFD", "HovR", "KamR", "MiÖD", "MmÖD", "AR", "PatD"]
+    },
+
+    "avgorandedatum": {
+      "type": "string",
+      "format": "date",
+      "description": "Avgörandedatum ISO 8601. Obligatoriskt för source_type=praxis."
+    },
+
+    "author_name": {
+      "type": "string",
+      "description": "Fullständigt författarnamn. Obligatoriskt för source_type=doktrin."
+    },
+
+    "work_title": {
+      "type": "string",
+      "description": "Verkets titel. Obligatoriskt för source_type=doktrin."
+    },
+
+    "edition": {
+      "type": "string",
+      "description": "Upplaga. Används för source_type=doktrin.",
+      "examples": ["3 uppl.", "2:a uppl."]
+    },
+
+    "year": {
+      "type": "integer",
+      "description": "Utgivningsår. Obligatoriskt för source_type=doktrin.",
+      "minimum": 1800,
+      "maximum": 2100
+    },
+
+    "isbn": {
+      "type": "string",
+      "description": "ISBN om tillgängligt. Används för source_type=doktrin."
+    },
+
+    "page_start": {
+      "type": "integer",
+      "description": "Första sida i chunk. Obligatoriskt för doktrin; används även för forarbete.",
+      "minimum": 1
+    },
+
+    "page_end": {
+      "type": "integer",
+      "description": "Sista sida i chunk.",
+      "minimum": 1
+    },
+
+    "citation_format": {
+      "type": "string",
+      "description": "Färdigformaterat citationsformat. Obligatoriskt för source_type=doktrin.",
+      "examples": ["Wennergren, Förvaltningsprocesslagen, 3 uppl., s. 42"]
+    },
+
+    "sou_number": {
+      "type": "string",
+      "description": "Kanoniskt SOU-nummer. Obligatoriskt för source_type=forarbete (SOU).",
+      "pattern": "^SOU \\d{4}:\\d+$",
+      "examples": ["SOU 2023:45", "SOU 1999:001"]
+    },
+
+    "sfs_number": {
+      "type": "string",
+      "description": "SFS-nummer. Obligatoriskt för source_type=sfs.",
+      "pattern": "^\\d{4}:\\d+$",
+      "examples": ["1949:381", "1998:204"]
+    },
+
+    "ikraftträdande": {
+      "type": "string",
+      "format": "date",
+      "description": "Ikraftträdandedatum. Obligatoriskt för source_type=sfs."
+    },
+
+    "consolidation_source": {
+      "type": "string",
+      "description": "Källa för konsoliderad text. Obligatoriskt för source_type=sfs.",
+      "enum": ["rk", "none"]
+    },
+
+    "norm_sha256": {
+      "type": "string",
+      "description": "SHA-256 av källdokumentet i norm-stadiet. Används för idempotency-kontroll.",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  },
+
+  "allOf": [
+    {
+      "if": { "properties": { "source_type": { "const": "praxis" } } },
+      "then": { "required": ["domstol", "avgorandedatum", "section", "pinpoint"] }
+    },
+    {
+      "if": { "properties": { "source_type": { "const": "doktrin" } } },
+      "then": { "required": ["author_name", "work_title", "year", "page_start", "citation_format"] }
+    },
+    {
+      "if": { "properties": { "source_type": { "const": "sfs" } } },
+      "then": { "required": ["sfs_number", "ikraftträdande", "consolidation_source"] }
+    },
+    {
+      "if": { "properties": { "source_type": { "const": "forarbete" } } },
+      "then": { "required": ["sou_number", "page_start"] }
+    }
+  ]
+}

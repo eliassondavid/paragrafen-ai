@@ -161,9 +161,9 @@ def load_config(config_path_arg: str | None = None) -> tuple[Config, Path]:
 
     config_dir = config_path.parent
     cfg = Config(
-        norm_dir=_resolve_path(str(merged["norm_dir"]), config_dir),
-        published_dir=_resolve_path(str(merged["published_dir"]), config_dir),
-        schema_path=_resolve_path(str(merged["schema_path"]), config_dir),
+        norm_dir=_resolve_path(str(merged["norm_dir"]), config_dir.parent),
+        published_dir=_resolve_path(str(merged["published_dir"]), config_dir.parent),
+        schema_path=_resolve_path(str(merged["schema_path"]), config_dir.parent),
         batch_size=int(merged.get("batch_size", 100)),
         idempotency_strategy=str(merged.get("idempotency_strategy", "sha256")),
         log_level=str(merged.get("log_level", "noop")),
@@ -217,6 +217,11 @@ def extract_sou_number(doc: dict[str, Any], filename: str) -> str:
 
 def extract_title(doc: dict[str, Any], sou_number: str) -> str:
     metadata = doc.get("metadata", {}) if isinstance(doc, dict) else {}
+    # Root-level lookup: sv-forarbete norm-format har title direkt på doc
+    for key in ("title", "titel"):
+        value = doc.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
     for key in ("title", "titel"):
         value = metadata.get(key)
         if isinstance(value, str) and value.strip():

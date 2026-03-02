@@ -182,6 +182,10 @@ class ForarbeteParser:
         if sections:
             return sections, "headers"
 
+        sections = self._extract_page_div_sections(soup)
+        if sections:
+            return sections, "page_divs"
+
         sections = self._extract_paragraph_sections(soup)
         if sections:
             return sections, "paragraphs"
@@ -228,6 +232,73 @@ class ForarbeteParser:
 
         if current and current.paragraphs:
             sections.append(current)
+        return sections
+
+
+    def _extract_page_div_sections(self, soup: BeautifulSoup) -> list[ParsedSection]:
+        """Extract sections from Riksdagen HTML where top-level divs = pages.
+
+        Riksdagen's HTML (from data.riksdagen.se) has no semantic headers.
+        Each direct child <div> of <body> corresponds to one PDF page.
+        This strategy:
+        1. Identifies top-level divs as pages
+        2. Filters out TOC pages (high ratio of dot-leaders)
+        3. Strips running headers (e.g. "SOU 2026:13")
+        4. Returns one ParsedSection per page with page number
+        """
+        body = soup.find("body")
+        if not body:
+            return []
+
+        top_divs = [c for c in body.children if isinstance(c, Tag) and c.name == "div"]
+
+        # Heuristic: need at least 10 page-divs to confirm this is page-based HTML.
+        # Fallback: if body has only one wrapper div, look one level deeper.
+        if len(top_divs) < 10:
+            if len(top_divs) == 1:
+                inner = [c for c in top_divs[0].children if isinstance(c, Tag) and c.name == "div"]
+                if len(inner) >= 10:
+                    top_divs = inner
+                else:
+                    return []
+            else:
+                return []
+
+        toc_pattern = re.compile(r"\.{4,}")
+        header_pattern = re.compile(r"^SOU\s+\d{4}:\d+.*$")
+
+        sections: list[ParsedSection] = []
+        for i, div in enumerate(top_divs):
+            text = div.get_text(separator="\n")
+            lines = [l.strip() for l in text.split("\n") if l.strip()]
+
+            if not lines:
+                continue
+
+            # Filter TOC pages: high ratio of dot-leaders or bare page numbers
+            toc_lines = sum(
+                1 for l in lines
+                if toc_pattern.search(l) or (l.isdigit() and len(l) <= 3)
+            )
+            if len(lines) > 3 and toc_lines / len(lines) > 0.25:
+                continue
+
+            # Strip running headers
+            clean_lines = [l for l in lines if not header_pattern.match(l)]
+            clean_text = self._normalize_text("\n".join(clean_lines))
+
+            if len(clean_text) < 40:
+                continue
+
+            # Use first non-trivial line as section title
+            title = clean_lines[0][:60].rstrip() if clean_lines else f"Sida {i + 1}"
+
+            sections.append(ParsedSection(
+                title=title,
+                paragraphs=[clean_text],
+                page=i + 1,
+            ))
+
         return sections
 
     def _extract_paragraph_sections(self, soup: BeautifulSoup) -> list[ParsedSection]:

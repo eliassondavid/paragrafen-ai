@@ -1,0 +1,158 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "pub_metadata_schema",
+  "title": "§AI Publish Metadata Schema",
+  "description": "Dokument-nivå schema för publish-stadiet (raw → norm → pub). Validerar output från forarbete_publish.py och motsvarande publish-skript för andra source_types. Chunk-nivå validering sker i index-stadiet mot chunk_metadata_schema.json.",
+  "version": "1.0.0",
+  "type": "object",
+
+  "required": [
+    "source_id",
+    "source_type",
+    "authority_level",
+    "norm_sha256",
+    "published_at",
+    "publish_version"
+  ],
+
+  "properties": {
+
+    "source_id": {
+      "type": "string",
+      "description": "UUID v5 för källdokumentet. Deterministiskt genererat från source_type + källspecifikt ID.",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+
+    "source_type": {
+      "type": "string",
+      "description": "Källtyp. Styr allOf-villkor nedan.",
+      "enum": ["praxis", "doktrin", "sfs", "forarbete"]
+    },
+
+    "document_subtype": {
+      "type": "string",
+      "description": "Underkategori inom source_type.",
+      "examples": ["sou", "prop", "ds", "hd", "hfd", "hovr", "kamr"]
+    },
+
+    "authority_level": {
+      "type": "string",
+      "description": "Normhierarkisk auktoritetsnivå. Ärvs oförändrat till chunk-stadiet.",
+      "enum": ["binding", "guiding", "preparatory", "persuasive"]
+    },
+
+    "legal_area": {
+      "type": "array",
+      "description": "Normaliserad lista av rättsområden från legal_areas.yaml. Kan vara tom lista om klassificering sker i index-stadiet.",
+      "items": { "type": "string" }
+    },
+
+    "norm_sha256": {
+      "type": "string",
+      "description": "SHA-256 av källdokumentet i norm-stadiet. Används för idempotency-kontroll i publish och index.",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+
+    "published_at": {
+      "type": "string",
+      "format": "date",
+      "description": "Datum då dokumentet publicerades (ISO 8601)."
+    },
+
+    "publish_version": {
+      "type": "string",
+      "description": "Versionsidentifierare för publish-skriptet som producerade dokumentet.",
+      "examples": ["1.0", "1.1"]
+    },
+
+    "source_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL till primärkällan."
+    },
+
+    "sou_number": {
+      "type": "string",
+      "description": "Kanoniskt SOU-nummer. Obligatoriskt för forarbete/sou.",
+      "pattern": "^SOU \\d{4}:\\d+$",
+      "examples": ["SOU 2023:45", "SOU 1999:1"]
+    },
+
+    "title": {
+      "type": "string",
+      "description": "Dokumentets titel. Obligatoriskt för forarbete och doktrin."
+    },
+
+    "year": {
+      "type": "integer",
+      "description": "Utgivningsår.",
+      "minimum": 1800,
+      "maximum": 2100
+    },
+
+    "department": {
+      "type": "string",
+      "description": "Ansvarigt departement. Används för forarbete."
+    },
+
+    "domstol": {
+      "type": "string",
+      "description": "Domstolsbeteckning. Obligatoriskt för source_type=praxis.",
+      "enum": ["HD", "HFD", "HovR", "KamR", "MiÖD", "MmÖD", "AR", "PatD"]
+    },
+
+    "avgorandedatum": {
+      "type": "string",
+      "format": "date",
+      "description": "Avgörandedatum. Obligatoriskt för source_type=praxis."
+    },
+
+    "author_name": {
+      "type": "string",
+      "description": "Fullständigt författarnamn. Obligatoriskt för source_type=doktrin."
+    },
+
+    "work_title": {
+      "type": "string",
+      "description": "Verkets titel. Obligatoriskt för source_type=doktrin."
+    },
+
+    "sfs_number": {
+      "type": "string",
+      "description": "SFS-nummer. Obligatoriskt för source_type=sfs.",
+      "pattern": "^\\d{4}:\\d+$",
+      "examples": ["1949:381", "1998:204"]
+    },
+
+    "ikraftträdande": {
+      "type": "string",
+      "format": "date",
+      "description": "Ikraftträdandedatum. Obligatoriskt för source_type=sfs."
+    },
+
+    "consolidation_source": {
+      "type": "string",
+      "description": "Källa för konsoliderad text. Obligatoriskt för source_type=sfs.",
+      "enum": ["rk", "none"]
+    }
+  },
+
+  "allOf": [
+    {
+      "if": { "properties": { "source_type": { "const": "praxis" } } },
+      "then": { "required": ["domstol", "avgorandedatum"] }
+    },
+    {
+      "if": { "properties": { "source_type": { "const": "doktrin" } } },
+      "then": { "required": ["author_name", "work_title", "year", "title"] }
+    },
+    {
+      "if": { "properties": { "source_type": { "const": "sfs" } } },
+      "then": { "required": ["sfs_number", "ikraftträdande", "consolidation_source"] }
+    },
+    {
+      "if": { "properties": { "source_type": { "const": "forarbete" } } },
+      "then": { "required": ["sou_number", "title", "year"] }
+    }
+  ]
+}

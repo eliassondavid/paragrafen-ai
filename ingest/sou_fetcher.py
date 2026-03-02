@@ -30,14 +30,38 @@ def load_sources_config(config_path: str | Path = "config/sources.yaml") -> dict
     return data
 
 
-def normalize_sou_beteckning(beteckning: str) -> str | None:
-    """Normalize e.g. 'SOU 2017:14' to 'SOU_2017_014'."""
+def normalize_sou_beteckning(beteckning: str, rm: str = "", nummer: str = "", dok_id: str = "") -> str | None:
+    """Normalize SOU beteckning to 'SOU_YYYY_NNN' format.
+
+    Handles multiple API formats:
+    - Full: 'SOU 2017:14' -> 'SOU_2017_014'
+    - Bare number in beteckning + rm field: beteckning='14', rm='2017' -> 'SOU_2017_014'
+    - dok_id with part suffix: dok_id='HEB310d2' -> 'SOU_2026_010_d2'
+    """
+    # Try full format first (e.g. "SOU 2017:14")
     match = re.search(r"(?i)\bSOU\s+(\d{4})\s*:\s*(\d+)\b", beteckning or "")
-    if not match:
+    if match:
+        year = match.group(1)
+        number = int(match.group(2))
+    elif rm and (nummer or (beteckning and beteckning.strip().isdigit())):
+        # Riksdagen API: beteckning is just the number, rm is the year
+        year = rm.strip()
+        num_str = nummer.strip() if nummer else beteckning.strip()
+        if not year.isdigit() or not num_str.isdigit():
+            return None
+        number = int(num_str)
+    else:
         return None
-    year = match.group(1)
-    number = int(match.group(2))
-    return f"SOU_{year}_{number:03d}"
+
+    base = f"SOU_{year}_{number:03d}"
+
+    # Handle multi-part documents (e.g. dok_id "HEB310d2" -> suffix "_d2")
+    if dok_id:
+        part_match = re.search(r"(d\d+)$", dok_id)
+        if part_match:
+            base = f"{base}_{part_match.group(1)}"
+
+    return base
 
 
 def _append_error(errors_path: Path, payload: dict[str, Any]) -> None:
@@ -237,7 +261,9 @@ def fetch_sou_documents(
             organ = _first_non_empty(document, "organ")
             fil_url = _first_non_empty(document, "filUrl", "fil_url")
 
-            normalized_name = normalize_sou_beteckning(beteckning)
+            rm = _first_non_empty(document, "rm")
+            nummer_field = _first_non_empty(document, "nummer")
+            normalized_name = normalize_sou_beteckning(beteckning, rm=rm or "", nummer=nummer_field or "", dok_id=dok_id or "")
             if not normalized_name:
                 if dok_id:
                     logger.warning("Could not normalize SOU beteckning '%s'; using dok_id.", beteckning)
@@ -358,7 +384,7 @@ def fetch_sou_documents(
                 continue
 
             raw_payload: dict[str, Any] = {
-                "beteckning": beteckning,
+                "beteckning": f"SOU {rm}:{nummer_field}" if rm and nummer_field else beteckning,
                 "dok_id": dok_id,
                 "titel": titel,
                 "datum": datum,

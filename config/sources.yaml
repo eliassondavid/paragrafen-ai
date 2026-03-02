@@ -1,0 +1,112 @@
+# config/sources.yaml
+# §AI (paragrafen.ai) — Källkonfiguration för ingest-pipelines
+# Senast uppdaterad: 2026-02-28
+#
+# Innehåller: API-endpoints, rate limits, sidstorlekar och felhanteringsparametrar
+# Används av: ingest/sou_fetcher.py, ingest/prop_fetcher.py, ingest/sfs_fetcher.py
+# Inga API-nycklar krävs — Riksdagens API är öppet
+
+riksdagen_api:
+  base_url: "https://data.riksdagen.se"
+
+  sou:
+    list_endpoint: "/dokumentlista/"
+    doktyp: "sou"
+    utformat: "json"
+    pagesize: 200
+    # Fulltext HTML per dokument
+    document_html_endpoint: "/dokument/{dok_id}"
+    # Normaliserat filnamnsformat: SOU_{år}_{löpnummer:03d}
+    # Exempel: SOU 2017:14 → SOU_2017_014
+    output_dir: "data/raw/forarbete/sou"
+    errors_file: "data/raw/forarbete/sou_errors.jsonl"
+
+  prop:
+    list_endpoint: "/dokumentlista/"
+    doktyp: "prop"
+    utformat: "json"
+    pagesize: 200
+    document_html_endpoint: "/dokument/{dok_id}"
+    # Normaliserat filnamnsformat: prop_{riksmöte_med_bindestreck}_{nummer}
+    # Exempel: prop. 2016/17:180 → prop_2016-17_180
+    output_dir: "data/raw/forarbete/prop"
+    errors_file: "data/raw/forarbete/prop_errors.jsonl"
+
+  # Ds (departementsserien) — förberett men ej aktivt i F-5a
+  ds:
+    list_endpoint: "/dokumentlista/"
+    doktyp: "ds"
+    utformat: "json"
+    pagesize: 200
+    document_html_endpoint: "/dokument/{dok_id}"
+    output_dir: "data/raw/forarbete/ds"
+    errors_file: "data/raw/forarbete/ds_errors.jsonl"
+    active: false   # Aktiveras i senare fas
+
+  sfs:
+    # SFS (Svensk författningssamling) — konsoliderade versioner från Riksdagen (beslut #11)
+    list_endpoint: "/dokumentlista/"
+    doktyp: "SFS"
+    utformat: "json"
+    pagesize: 200
+    # Fulltext HTML per dokument
+    document_html_endpoint: "/dokument/{dok_id}"
+    # Normaliserat filnamnsformat: {sfs_nr_med_bindestreck}.json
+    # Exempel: SFS 1962:700 → 1962-700.json  (kolon ogiltigt i Windows-filnamn)
+    output_dir: "data/raw/sfs"
+    norm_dir: "data/norm/sfs"
+    errors_file: "data/raw/sfs_errors.jsonl"
+    # Konsoliderad källangivelse (arkitekturbeslut #11)
+    consolidation_source: "rk"
+    # Hämta bara aktiva SFS — exkludera upphävda
+    only_active: true
+
+rate_limiting:
+  # Sekunder att vänta mellan varje API-anrop (dokumentnivå)
+  delay_between_requests_s: 1.0
+  # Retry-parametrar vid HTTP-fel
+  max_retries: 3
+  retry_backoff_base_s: 1.0   # 1s, 2s, 4s (exponentiell)
+  # Timeout per anrop (sekunder)
+  request_timeout_s: 30
+
+http:
+  user_agent: "paragrafenai-fetcher/0.1 (github.com/paragrafen-ai; kontakt via repo)"
+  # Riksdagens API accepterar gzip
+  accept_encoding: "gzip, deflate"
+
+progress:
+  # Logga progress var N:e dokument
+  log_every_n_documents: 100
+
+html_parsing:
+  # Rubriker som markerar avsnittsgränser
+  header_tags:
+    - "h1"
+    - "h2"
+    - "h3"
+  # Textblock som används för chunking
+  paragraph_tags:
+    - "p"
+    - "li"
+  # Taggar som alltid tas bort innan textutvinning
+  remove_tags:
+    - "script"
+    - "style"
+  # Vanliga layout-klasser som ska rensas bort
+  remove_classes:
+    - "nav"
+    - "header"
+    - "footer"
+    - "breadcrumb"
+    - "sidebar"
+  # Element som kan innehålla sidnummer
+  page_tag_names:
+    - "span"
+  page_class_names:
+    - "page"
+  # Regex-mönster för sidnummerextrahering
+  page_number_patterns:
+    - "<!--\\s*Page\\s+(\\d+)\\s*-->"
+    - "<span[^>]*class=['\\\"]?page['\\\"]?[^>]*>\\s*(\\d+)\\s*</span>"
+    - "\\bPage\\s+(\\d+)\\b"
