@@ -1,0 +1,51 @@
+# config/forarbete_rank.yaml
+# Kontrollerad vokabulär och rank för förarbetestyper
+# Används av: prop_normalizer.py, norm_boost.py, patch-skript, reindex_sou.py
+# Arkitekturbeslut F4 — fastställt 2026-03-02
+# Lägre rank-värde = högre auktoritet
+
+forarbete_types:
+  utskottsbetankande:
+    rank: 1
+    label: "Utskottsbetänkande"
+    namespace_prefix: "bet"
+    forarbete_type: "utskottsbetankande"
+    pipeline: "curated"          # "curated" | "automated"
+    note: "Generell pipeline planeras post-lansering. Pre-lansering: data/curated/utskottsbetankanden.json"
+  proposition:
+    rank: 2
+    label: "Proposition"
+    namespace_prefix: "prop"
+    forarbete_type: "proposition"
+    pipeline: "automated"
+  sou:
+    rank: 3
+    label: "Statens offentliga utredningar"
+    namespace_prefix: "sou"
+    forarbete_type: "sou"
+    pipeline: "automated"
+  ds:
+    rank: 3
+    label: "Departementsserien"
+    namespace_prefix: "ds"
+    forarbete_type: "ds"
+    pipeline: "planned"
+  dir:
+    rank: 4
+    label: "Kommittédirektiv"
+    namespace_prefix: "dir"
+    forarbete_type: "dir"
+    pipeline: "planned"
+
+norm_boost_modifiers:
+  rank_1: 1.00   # utskottsbetankande — full preparatory-vikt
+  rank_2: 0.90   # proposition
+  rank_3: 0.75   # sou / ds
+  rank_4: 0.55   # dir
+  default: 0.75  # defensivt fallback om forarbete_rank saknas
+
+authority_level:
+  forarbete: "preparatory"   # alltid — aldrig "primary" eller "persuasive"
+  note: >
+    "preparatory" är det enda korrekta värdet för alla förarbeten oavsett typ.
+    Prioritet *inom* preparatory-nivån hanteras uteslutande av forarbete_rank.
