@@ -15,6 +15,8 @@ import yaml
 
 logger = logging.getLogger("paragrafenai.noop")
 
+MIN_DELAY_BETWEEN_REQUESTS_S = 0.2
+
 
 class FetchError(Exception):
     """Raised when an HTTP request fails after retries."""
@@ -30,15 +32,29 @@ def load_sources_config(config_path: str | Path = "config/sources.yaml") -> dict
     return data
 
 
+def normalize_riksmote(rm: str) -> str:
+    """Normalize `2016/17` -> `2016-17`; keep single-year values unchanged."""
+    value = (rm or "").strip()
+    match = re.fullmatch(r"(\d{4})\s*/\s*(\d{2})", value)
+    if match:
+        return f"{match.group(1)}-{match.group(2)}"
+    return value
+
+
 def normalize_prop_beteckning(beteckning: str) -> str | None:
     """Normalize e.g. 'prop. 2016/17:180' to 'prop_2016-17_180'."""
-    match = re.search(r"(?i)\bprop\.?\s*(\d{4})\s*/\s*(\d{2})\s*:\s*(\d+)\b", beteckning or "")
+    match = re.search(
+        r"(?i)\bprop\.?\s*(\d{4})(?:\s*/\s*(\d{2}))?\s*:\s*(\d+)\b",
+        beteckning or "",
+    )
     if not match:
         return None
+
     start_year = match.group(1)
     end_year = match.group(2)
     number = int(match.group(3))
-    return f"prop_{start_year}-{end_year}_{number}"
+    rm_norm = f"{start_year}-{end_year}" if end_year else start_year
+    return f"prop_{rm_norm}_{number}"
 
 
 def _append_error(errors_path: Path, payload: dict[str, Any]) -> None:
@@ -79,12 +95,24 @@ def _extract_remaining(list_payload: dict[str, Any]) -> int | None:
         return None
 
     remaining_keys = (
-        "@\u00e5terst\u00e5ende",
+        "@återstående",
         "@aterstaende",
-        "@\u00e5terstaende",
+        "@återstaende",
         "@remaining",
     )
     for key in remaining_keys:
+        raw_value = document_list.get(key)
+        if raw_value is None:
+            continue
+        try:
+            return int(raw_value)
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def _extract_page_number(document_list: dict[str, Any], *keys: str) -> int | None:
+    for key in keys:
         raw_value = document_list.get(key)
         if raw_value is None:
             continue
@@ -129,21 +157,22 @@ def _request_json_with_retry(
     max_retries: int,
     retry_backoff_base_s: float,
 ) -> dict[str, Any]:
-    last_exc: Exception | None = None
-    for attempt in range(1, max_retries + 1):
-        try:
-            response = session.get(url, headers=headers, params=params, timeout=timeout)
-            response.raise_for_status()
-            payload = response.json()
-            if not isinstance(payload, dict):
-                raise ValueError("Response JSON must be a mapping.")
-            return payload
-        except (requests.Timeout, requests.ConnectionError, requests.HTTPError, ValueError) as exc:
-            last_exc = exc
-            if attempt >= max_retries:
-                break
-            time.sleep(retry_backoff_base_s * (2 ** (attempt - 1)))
-    raise FetchError(str(last_exc) if last_exc else "Unknown JSON request failure")
+    response = _request_with_retry(
+        session,
+        url=url,
+        headers=headers,
+        params=params,
+        timeout=timeout,
+        max_retries=max_retries,
+        retry_backoff_base_s=retry_backoff_base_s,
+    )
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise FetchError(str(exc)) from exc
+    if not isinstance(payload, dict):
+        raise FetchError("Response JSON must be a mapping.")
+    return payload
 
 
 def _first_non_empty(document: dict[str, Any], *keys: str) -> str:
@@ -156,6 +185,17 @@ def _first_non_empty(document: dict[str, Any], *keys: str) -> str:
 
 def _join_url(base_url: str, endpoint: str) -> str:
     return f"{base_url.rstrip('/')}/{endpoint.lstrip('/')}"
+
+
+def _normalize_document_url(base_url: str, url: str) -> str:
+    value = (url or "").strip()
+    if not value:
+        return ""
+    if value.startswith("//"):
+        return f"https:{value}"
+    if value.startswith("/"):
+        return _join_url(base_url, value)
+    return value
 
 
 def _extract_prop_parts(document: dict[str, Any], beteckning: str) -> tuple[str, int | None]:
@@ -171,12 +211,52 @@ def _extract_prop_parts(document: dict[str, Any], beteckning: str) -> tuple[str,
     if riksmote and nummer is not None:
         return riksmote, nummer
 
-    match = re.search(r"(?i)\bprop\.?\s*(\d{4}/\d{2})\s*:\s*(\d+)\b", beteckning or "")
+    match = re.search(r"(?i)\bprop\.?\s*(\d{4}(?:/\d{2})?)\s*:\s*(\d+)\b", beteckning or "")
     if match:
         riksmote = match.group(1)
         nummer = int(match.group(2))
 
     return riksmote, nummer
+
+
+def _build_filename(riksmote: str, nummer: int | None, beteckning: str, dok_id: str) -> str | None:
+    rm_norm = normalize_riksmote(riksmote)
+    if rm_norm and nummer is not None:
+        return f"prop_{rm_norm}_{nummer}"
+
+    normalized_name = normalize_prop_beteckning(beteckning)
+    if normalized_name:
+        return normalized_name
+
+    return dok_id or None
+
+
+def _extract_pdf_url(base_url: str, document: dict[str, Any]) -> str:
+    attachment = document.get("filbilaga")
+    candidates: list[str] = []
+
+    if isinstance(attachment, dict):
+        nested = attachment.get("fil")
+        if isinstance(nested, list):
+            for item in nested:
+                if isinstance(item, dict):
+                    candidates.append(str(item.get("url", "") or ""))
+        elif isinstance(nested, dict):
+            candidates.append(str(nested.get("url", "") or ""))
+        candidates.append(str(attachment.get("url", "") or ""))
+    elif isinstance(attachment, list):
+        for item in attachment:
+            if isinstance(item, dict):
+                nested = item.get("fil")
+                if isinstance(nested, dict):
+                    candidates.append(str(nested.get("url", "") or ""))
+                candidates.append(str(item.get("url", "") or ""))
+
+    for candidate in candidates:
+        normalized = _normalize_document_url(base_url, candidate)
+        if normalized:
+            return normalized
+    return ""
 
 
 def fetch_prop_documents(
@@ -199,11 +279,10 @@ def fetch_prop_documents(
     output_dir = Path(str(prop_cfg["output_dir"]))
     errors_path = Path(str(prop_cfg["errors_file"]))
 
-    delay_between = float(rate_cfg.get("delay_between_requests_s", 1.0))
+    delay_between = max(float(rate_cfg.get("delay_between_requests_s", 1.0)), MIN_DELAY_BETWEEN_REQUESTS_S)
     max_retries = int(rate_cfg.get("max_retries", 3))
     retry_backoff_base_s = float(rate_cfg.get("retry_backoff_base_s", 1.0))
     timeout = float(rate_cfg.get("request_timeout_s", 30))
-
     log_every = int(progress_cfg.get("log_every_n_documents", 100))
 
     headers = {
@@ -250,6 +329,10 @@ def fetch_prop_documents(
             )
             break
 
+        document_list = page_payload.get("dokumentlista", {})
+        if not isinstance(document_list, dict):
+            document_list = {}
+
         documents = _extract_documents(page_payload)
         for document in documents:
             beteckning = _first_non_empty(document, "beteckning")
@@ -257,41 +340,44 @@ def fetch_prop_documents(
             titel = _first_non_empty(document, "titel")
             datum = _first_non_empty(document, "datum")
             organ = _first_non_empty(document, "organ")
-            fil_url = _first_non_empty(document, "filUrl", "fil_url")
 
             riksmote, nummer = _extract_prop_parts(document, beteckning)
-            normalized_name = normalize_prop_beteckning(beteckning)
+            normalized_name = _build_filename(riksmote, nummer, beteckning, dok_id)
             if not normalized_name:
-                if dok_id:
-                    logger.warning("Could not normalize proposition beteckning '%s'; using dok_id.", beteckning)
-                    normalized_name = dok_id
-                else:
-                    logger.warning(
-                        "Missing both normalizable proposition beteckning and dok_id; skipping document."
-                    )
-                    _append_error(
-                        errors_path,
-                        {
-                            "source": "prop_document",
-                            "beteckning": beteckning,
-                            "error": "Could not derive filename from beteckning or dok_id.",
-                            "fetched_at": datetime.now(timezone.utc).isoformat(),
-                        },
-                    )
-                    continue
+                logger.warning(
+                    "Missing both normalizable proposition beteckning and dok_id; skipping document."
+                )
+                _append_error(
+                    errors_path,
+                    {
+                        "source": "prop_document",
+                        "beteckning": beteckning,
+                        "error": "Could not derive filename from beteckning or dok_id.",
+                        "fetched_at": datetime.now(timezone.utc).isoformat(),
+                    },
+                )
+                continue
 
             out_path = output_dir / f"{normalized_name}.json"
             if out_path.exists():
                 continue
 
-            source_url = fil_url
+            source_url = _join_url(base_url, f"/dokument/{dok_id}") if dok_id else ""
+            html_url = _normalize_document_url(base_url, _first_non_empty(document, "dokument_url_html"))
+            if not html_url and dok_id:
+                html_url = _join_url(base_url, html_template.format(dok_id=dok_id))
+
+            text_url = _normalize_document_url(
+                base_url,
+                _first_non_empty(document, "dokument_url_text", "fil_url", "filUrl"),
+            )
+            pdf_url = _extract_pdf_url(base_url, document)
+
             html_content = ""
             html_available = False
-            any_fetch_success = False
-            html_url = ""
+            fetch_failed = False
 
-            if dok_id:
-                html_url = _join_url(base_url, html_template.format(dok_id=dok_id))
+            if html_url:
                 try:
                     response = _request_with_retry(
                         session,
@@ -302,13 +388,12 @@ def fetch_prop_documents(
                         max_retries=max_retries,
                         retry_backoff_base_s=retry_backoff_base_s,
                     )
-                    any_fetch_success = True
-                    source_url = html_url
-                    maybe_text = response.text.strip()
-                    if maybe_text:
-                        html_content = maybe_text
+                    html_candidate = response.text.strip()
+                    if html_candidate:
+                        html_content = html_candidate
                         html_available = True
                 except FetchError as exc:
+                    fetch_failed = True
                     logger.warning("Failed HTML fetch for proposition dok_id=%s: %s", dok_id, exc)
                     _append_error(
                         errors_path,
@@ -321,26 +406,24 @@ def fetch_prop_documents(
                         },
                     )
 
-            if not html_available and fil_url:
+            if not html_available and text_url:
                 try:
                     response = _request_with_retry(
                         session,
-                        url=fil_url,
+                        url=text_url,
                         headers=headers,
                         params=None,
                         timeout=timeout,
                         max_retries=max_retries,
                         retry_backoff_base_s=retry_backoff_base_s,
                     )
-                    any_fetch_success = True
-                    source_url = fil_url
                     content_type = response.headers.get("Content-Type", "").lower()
-                    if any(token in content_type for token in ("text", "html", "xml")):
-                        maybe_text = response.text.strip()
-                        if maybe_text:
-                            html_content = maybe_text
-                            html_available = True
+                    html_candidate = response.text.strip()
+                    if html_candidate and any(token in content_type for token in ("text", "html", "xml")):
+                        html_content = html_candidate
+                        html_available = True
                 except FetchError as exc:
+                    fetch_failed = True
                     logger.warning("Fallback fetch failed for proposition dok_id=%s: %s", dok_id, exc)
                     _append_error(
                         errors_path,
@@ -353,7 +436,7 @@ def fetch_prop_documents(
                         },
                     )
 
-            if not any_fetch_success and (dok_id or fil_url):
+            if fetch_failed and not html_available and (html_url or text_url):
                 logger.error("Could not fetch proposition content after retries for dok_id=%s", dok_id)
                 _append_error(
                     errors_path,
@@ -367,34 +450,21 @@ def fetch_prop_documents(
                 )
                 continue
 
-            if not html_available and not fil_url and not dok_id:
-                logger.error("Proposition document missing filUrl and dok_id: %s", beteckning)
-                _append_error(
-                    errors_path,
-                    {
-                        "source": "prop_document",
-                        "beteckning": beteckning,
-                        "error": "Missing filUrl and dok_id.",
-                        "fetched_at": datetime.now(timezone.utc).isoformat(),
-                    },
-                )
-                continue
-
             raw_payload: dict[str, Any] = {
                 "beteckning": beteckning,
                 "dok_id": dok_id,
-                "titel": titel,
-                "riksmote": riksmote,
+                "rm": riksmote,
                 "nummer": nummer,
+                "titel": titel,
                 "datum": datum,
                 "organ": organ,
                 "source_url": source_url,
+                "dokument_url_html": html_url,
+                "pdf_url": pdf_url,
+                "html_content": html_content,
+                "html_available": html_available,
                 "fetched_at": datetime.now(timezone.utc).isoformat(),
             }
-            if html_available:
-                raw_payload["html_content"] = html_content
-            else:
-                raw_payload["html_available"] = False
 
             _write_json_file(out_path, raw_payload)
             saved_count += 1
@@ -403,12 +473,16 @@ def fetch_prop_documents(
 
             time.sleep(delay_between)
 
+        current_page = _extract_page_number(document_list, "@sida", "@page")
+        total_pages = _extract_page_number(document_list, "@sidor", "@pages")
+        if current_page is not None and total_pages is not None and current_page >= total_pages:
+            break
+
         remaining = _extract_remaining(page_payload)
         if remaining == 0:
             break
         if remaining is None and not documents:
             break
-
         page += 1
 
     return saved_count
