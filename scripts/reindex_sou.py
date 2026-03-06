@@ -76,33 +76,56 @@ def connect_collection(chroma_path: str = CHROMA_PATH, name: str = COLLECTION_NA
     return client.get_collection(name)
 
 
+CHROMA_PAGE_SIZE = 5_000  # SQLite variabelgräns kräver paginering vid stora samlingar
+
+
+def fetch_paged(
+    collection: Any,
+    where: dict,
+    include: list[str],
+) -> list[dict]:
+    """Hämta alla resultat för ett where-filter via offset-paginering."""
+    all_results: list[dict] = []
+    offset = 0
+    while True:
+        page = collection.get(
+            where=where,
+            include=include,
+            limit=CHROMA_PAGE_SIZE,
+            offset=offset,
+        )
+        ids = page.get("ids") or []
+        if not ids:
+            break
+        all_results.append(page)
+        if len(ids) < CHROMA_PAGE_SIZE:
+            break
+        offset += CHROMA_PAGE_SIZE
+    return all_results
+
+
 def fetch_candidate_chunks(collection: Any, limit: int | None = None) -> list[ChunkRecord]:
     include = ["metadatas", "documents", "embeddings"]
-    results_a = collection.get(
-        where={"forarbete_type": {"$eq": "sou"}},
-        include=include,
-    )
-    results_b = collection.get(
-        where={"authority_level": {"$eq": "persuasive"}},
-        include=include,
-    )
 
     merged: dict[str, ChunkRecord] = {}
-    for result in (results_a, results_b):
-        for record in iter_result_records(result):
-            if not is_sou_candidate(record):
-                continue
-            existing = merged.get(record.chunk_id)
-            if existing is None:
-                merged[record.chunk_id] = record
-                continue
-
-            if existing.document is None and record.document is not None:
-                existing.document = record.document
-            if existing.embedding is None and record.embedding is not None:
-                existing.embedding = record.embedding
-            if not existing.metadata and record.metadata:
-                existing.metadata = record.metadata
+    for where in (
+        {"forarbete_type": {"$eq": "sou"}},
+        {"authority_level": {"$eq": "persuasive"}},
+    ):
+        for result in fetch_paged(collection, where=where, include=include):
+            for record in iter_result_records(result):
+                if not is_sou_candidate(record):
+                    continue
+                existing = merged.get(record.chunk_id)
+                if existing is None:
+                    merged[record.chunk_id] = record
+                    continue
+                if existing.document is None and record.document is not None:
+                    existing.document = record.document
+                if existing.embedding is None and record.embedding is not None:
+                    existing.embedding = record.embedding
+                if not existing.metadata and record.metadata:
+                    existing.metadata = record.metadata
 
     records = list(merged.values())
     if limit is not None:

@@ -15,7 +15,16 @@ class FakeCollection:
 
     def get(self, **kwargs):
         self.get_calls.append(kwargs)
-        return self._results[len(self.get_calls) - 1]
+        idx = len(self.get_calls) - 1
+        # Returnera tomt resultat för andra sidan av paginering
+        if idx >= len(self._results):
+            return {"ids": [], "metadatas": [], "documents": [], "embeddings": []}
+        result = self._results[idx]
+        # Simulera limit/offset för paginering — returnera tomt på andra anrop
+        offset = kwargs.get("offset", 0)
+        if offset > 0:
+            return {"ids": [], "metadatas": [], "documents": [], "embeddings": []}
+        return result
 
     def update(self, **kwargs):
         self.update_calls.append(kwargs)
