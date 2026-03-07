@@ -185,7 +185,7 @@ def _find_section_match(text: str) -> tuple[str, str] | None:
         match = re.search(pattern, text)
         if not match:
             continue
-        if match.start() > 5:
+        if match.start() > 80:
             continue
         candidate = (section_name, _normalize_page_text(match.group(0)), match.start())
         if best_match is None or candidate[2] < best_match[2]:
