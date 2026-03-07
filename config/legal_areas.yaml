@@ -1,96 +1,100 @@
-# Kontrollerad vokabulär för legal_area
-# Används för normalisering och filtrering i retrieval
 areas:
-  - id: "avtalsrätt"
-    label: "Avtalsrätt"
-    parent: "civilrätt"
-  - id: "arbetsrätt"
-    label: "Arbetsrätt"
-  - id: "arvsrätt"
-    label: "Arvsrätt"
-    parent: "familjerätt"
-  - id: "associationsrätt"
-    label: "Associationsrätt"
-  - id: "bolagsrätt"
-    label: "Bolagsrätt"
-    parent: "associationsrätt"
-  - id: "civilrätt"
-    label: "Civilrätt"
-  - id: "dataskydd"
-    label: "Dataskydd och integritet"
-  - id: "familjerätt"
-    label: "Familjerätt"
-  - id: "fastighetsrätt"
-    label: "Fastighetsrätt"
-  - id: "finansrätt"
-    label: "Finansrätt"
-  - id: "folkrätt"
-    label: "Folkrätt"
-  - id: "förvaltningsrätt"
-    label: "Förvaltningsrätt"
-  - id: "funktionsnedsättning"
-    label: "Funktionsnedsättning och LSS"
-  - id: "grundlag"
-    label: "Grundlag"
-  - id: "handelsrätt"
-    label: "Handelsrätt"
-  - id: "hälso- och sjukvårdsrätt"
-    label: "Hälso- och sjukvårdsrätt"
-  - id: "immaterialrätt"
-    label: "Immaterialrätt"
-  - id: "internationell rätt"
-    label: "Internationell rätt"
-  - id: "jordbruksrätt"
-    label: "Jordbruks- och livsmedelsrätt"
-  - id: "kommunalrätt"
-    label: "Kommunalrätt"
-  - id: "konkurrensrätt"
-    label: "Konkurrensrätt"
-  - id: "krediträtt"
-    label: "Krediträtt"
-  - id: "kulturrätt"
-    label: "Kulturrätt"
-  - id: "köprätt"
-    label: "Köprätt"
-    parent: "avtalsrätt"
-  - id: "livsmedelsrätt"
-    label: "Livsmedelsrätt"
-  - id: "marknadsrätt"
-    label: "Marknadsrätt"
-  - id: "medierätt"
-    label: "Medierätt och yttrandefrihet"
-  - id: "migrationsrätt"
-    label: "Migrationsrätt"
-  - id: "miljörätt"
-    label: "Miljörätt"
-  - id: "naturvårdsrätt"
-    label: "Naturvårdsrätt"
-    parent: "miljörätt"
-  - id: "näringsrätt"
-    label: "Näringsrätt"
-  - id: "offentlig rätt"
-    label: "Offentlig rätt"
-  - id: "plan- och byggrätt"
-    label: "Plan- och byggrätt"
-  - id: "processrätt"
-    label: "Processrätt"
-  - id: "skadeståndsrätt"
-    label: "Skadeståndsrätt"
-  - id: "skatterätt"
-    label: "Skatterätt"
-  - id: "socialrätt"
-    label: "Socialrätt"
-  - id: "statsrätt"
-    label: "Statsrätt och konstitutionell rätt"
-  - id: "straffrätt"
-    label: "Straffrätt"
-  - id: "transporträtt"
-    label: "Transporträtt"
-  - id: "upphovsrätt"
-    label: "Upphovsrätt"
-    parent: "immaterialrätt"
-  - id: "utbildningsrätt"
-    label: "Utbildningsrätt"
-  - id: "utlänningsrätt"
-    label: "Utlänningsrätt"
-    parent: "migrationsrätt"
+- id: avtalsrätt
+  label: Avtalsrätt
+  parent: civilrätt
+- id: arbetsrätt
+  label: Arbetsrätt
+- id: arvsrätt
+  label: Arvsrätt
+  parent: familjerätt
+- id: associationsrätt
+  label: Associationsrätt
+- id: bolagsrätt
+  label: Bolagsrätt
+  parent: associationsrätt
+- id: civilrätt
+  label: Civilrätt
+- id: dataskydd
+  label: Dataskydd och integritet
+- id: familjerätt
+  label: Familjerätt
+- id: fastighetsrätt
+  label: Fastighetsrätt
+- id: finansrätt
+  label: Finansrätt
+- id: folkrätt
+  label: Folkrätt
+- id: förvaltningsrätt
+  label: Förvaltningsrätt
+- id: funktionsnedsättning
+  label: Funktionsnedsättning och LSS
+- id: grundlag
+  label: Grundlag
+- id: handelsrätt
+  label: Handelsrätt
+- id: hälso- och sjukvårdsrätt
+  label: Hälso- och sjukvårdsrätt
+- id: immaterialrätt
+  label: Immaterialrätt
+- id: internationell rätt
+  label: Internationell rätt
+- id: jordbruksrätt
+  label: Jordbruks- och livsmedelsrätt
+- id: kommunalrätt
+  label: Kommunalrätt
+- id: konkurrensrätt
+  label: Konkurrensrätt
+- id: krediträtt
+  label: Krediträtt
+- id: kulturrätt
+  label: Kulturrätt
+- id: köprätt
+  label: Köprätt
+  parent: avtalsrätt
+- id: livsmedelsrätt
+  label: Livsmedelsrätt
+- id: marknadsrätt
+  label: Marknadsrätt
+- id: medierätt
+  label: Medierätt och yttrandefrihet
+- id: migrationsrätt
+  label: Migrationsrätt
+- id: miljörätt
+  label: Miljörätt
+- id: naturvårdsrätt
+  label: Naturvårdsrätt
+  parent: miljörätt
+- id: näringsrätt
+  label: Näringsrätt
+- id: offentlig rätt
+  label: Offentlig rätt
+- id: plan- och byggrätt
+  label: Plan- och byggrätt
+- id: processrätt
+  label: Processrätt
+- id: skadeståndsrätt
+  label: Skadeståndsrätt
+- id: skatterätt
+  label: Skatterätt
+- id: socialrätt
+  label: Socialrätt
+- id: statsrätt
+  label: Statsrätt och konstitutionell rätt
+- id: straffrätt
+  label: Straffrätt
+- id: transporträtt
+  label: Transporträtt
+- id: upphovsrätt
+  label: Upphovsrätt
+  parent: immaterialrätt
+- id: utbildningsrätt
+  label: Utbildningsrätt
+- id: utlänningsrätt
+  label: Utlänningsrätt
+  parent: migrationsrätt
+- id: upphl
+  label: Upphovsrättslagen (1960:729)
+  aliases:
+  - upphovsrätt
+  - upphovsrattslagen
+  - immaterialrätt
