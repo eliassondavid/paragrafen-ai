@@ -4,6 +4,8 @@
 
 embedding:
   model: "intfloat/multilingual-e5-large"
+  production_model: "KBLab/sentence-bert-swedish-cased"
+  normalize_embeddings: true
   # alternatives:
   #   - "KBLab/sentence-bert-swedish-cased"   # Tränad på svenska KB-data
   #   - "nomic-ai/nomic-embed-text-v1.5"       # Matryoshka, 8192 tokens
@@ -33,3 +35,31 @@ metadata_fields:
 
 sfs_parser:
   single_chapter_sequential_threshold: 15
+
+chroma:
+  # Separata instanser per källtyp — varje collection har egen sqlite3
+  instances:
+    forarbete:
+      path: "data/index/chroma/forarbete"
+      collection: "paragrafen_forarbete_v1"
+    praxis:
+      path: "data/index/chroma/praxis"
+      collection: "paragrafen_praxis_v1"
+    sfs:
+      path: "data/index/chroma/sfs"
+      collection: "paragrafen_sfs_v1"
+    doktrin:
+      path: "data/index/chroma/doktrin"
+      collection: "paragrafen_doktrin_v1"
+    prop:
+      path: "data/index/chroma/prop"
+      collection: "paragrafen_prop_v1"
+    sou:
+      path: "data/index/chroma/sou"
+      collection: "paragrafen_sou_v1"
+    riksdag:
+      path: "data/index/chroma/riksdag"
+      collection: "paragrafen_riksdag_v1"
+    nja_ii:
+      path: "data/index/chroma/nja_ii"
+      collection: "paragrafen_nja_ii_v1"

@@ -30,12 +30,18 @@ forarbete_types:
     namespace_prefix: "ds"
     forarbete_type: "ds"
     pipeline: "planned"
+  rskr:
+    rank: 5
+    label: "Riksdagsskrivelse"
+    namespace_prefix: "rskr"
+    forarbete_type: "rskr"
+    pipeline: "automated"
   dir:
     rank: 4
     label: "Kommittédirektiv"
     namespace_prefix: "dir"
     forarbete_type: "dir"
-    pipeline: "planned"
+    pipeline: "automated"
 
 norm_boost_modifiers:
   rank_1: 1.00   # utskottsbetankande — full preparatory-vikt

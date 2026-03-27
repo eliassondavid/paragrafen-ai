@@ -16,12 +16,20 @@ areas:
   label: Civilrätt
 - id: dataskydd
   label: Dataskydd och integritet
+- id: eu_rätt
+  label: EU-rätt
+- id: exekutionsrätt
+  label: Exekutionsrätt
+  parent: processrätt
 - id: familjerätt
   label: Familjerätt
 - id: fastighetsrätt
   label: Fastighetsrätt
 - id: finansrätt
   label: Finansrätt
+- id: försäkringsrätt
+  label: Försäkringsrätt
+  parent: civilrätt
 - id: folkrätt
   label: Folkrätt
 - id: förvaltningsrätt
@@ -37,6 +45,8 @@ areas:
 - id: immaterialrätt
   label: Immaterialrätt
 - id: internationell rätt
+  label: Internationell rätt
+- id: internationell_rätt
   label: Internationell rätt
 - id: jordbruksrätt
   label: Jordbruks- och livsmedelsrätt
@@ -72,16 +82,32 @@ areas:
   label: Plan- och byggrätt
 - id: processrätt
   label: Processrätt
+- id: rättshistoria
+  label: Rättshistoria
+- id: rättslära
+  label: Rättslära
+- id: sakrätt
+  label: Sakrätt
+  parent: civilrätt
 - id: skadeståndsrätt
   label: Skadeståndsrätt
 - id: skatterätt
   label: Skatterätt
+- id: skatterätt_exkl
+  label: Skatterätt (exkluderat)
+  parent: skatterätt
+- id: skiljeförfarande
+  label: Skiljeförfarande
+  parent: processrätt
 - id: socialrätt
   label: Socialrätt
 - id: statsrätt
   label: Statsrätt och konstitutionell rätt
 - id: straffrätt
   label: Straffrätt
+- id: straffrätt_exkl
+  label: Straffrätt (exkluderat)
+  parent: straffrätt
 - id: transporträtt
   label: Transporträtt
 - id: upphovsrätt
@@ -92,6 +118,11 @@ areas:
 - id: utlänningsrätt
   label: Utlänningsrätt
   parent: migrationsrätt
+- id: migrationsrätt_exkl
+  label: Migrationsrätt (exkluderat)
+  parent: migrationsrätt
+- id: övrigt
+  label: Övrigt
 - id: upphl
   label: Upphovsrättslagen (1960:729)
   aliases:

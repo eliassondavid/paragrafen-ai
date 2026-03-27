@@ -1,0 +1,72 @@
+# Lag-koder per volym — BESLUTAT AV ÖVERPROJEKTET 2026-03-07
+# En lag per chunk (Alt A). lag-fältet är str, inte list.
+data_dir: "data/curated/nja_ii"
+
+volym_lag_default:
+  1943: "rb"
+  1961: "upphl"
+  1962: "brb"
+  1964: "brb"
+  1966: "jb"
+  1972: "jb"
+  1973: "rb"
+  # 1968: ingen default — lag bestäms per block (se fallback nedan)
+
+# Fallback för flerlagsvolymer om block-filerna saknar lag-märkning.
+# Codex identifierar lag per block i steg 0. Om det inte går: använd denna mappning.
+volym_lag_fallback:
+  1968:
+    primary: "jb"     # hyreslagstiftning (del av JB före 2019)
+    secondary: "ub"   # utsökning/införsel
+
+# Chunking
+max_tokens: 600
+upsert_batch_size: 100
+
+# ChromaDB
+collection_name: "paragrafen_forarbete_v1"
+chroma_path: "/Users/davideliasson/Projects/paragrafen-ai/data/index/chroma"
+
+# Embedding
+embedding_model: "KBLab/sentence-bert-swedish-cased"
+
+# Haiku API (legal_area-klassificering)
+legal_area_model: "claude-haiku-4-5-20251001"
+legal_area_prompt: |
+  Klassificera följande juridiska text till ett eller flera rättsområden.
+  Returnera en JSON-lista med normaliserade rättsområden från legal_areas.yaml.
+  Text: {text}
+
+legal_areas_path: "config/legal_areas.yaml"
+
+lag_legal_area_fallback:
+  rb: ["processrätt"]
+  fb: ["familjerätt"]
+  upphl: ["immaterialrätt", "upphovsrätt"]
+  jb: ["fastighetsrätt"]
+  brb: ["straffrätt"]
+  ub: ["processrätt"]
+  diverse: ["civilrätt"]
+
+mixed_volume_rules:
+  1968:
+    primary_keywords:
+      - "hyreslag"
+      - "hyresreglering"
+      - "hyresnämnd"
+      - "hyresrådet"
+      - "lokaler"
+      - "bostadslägenhet"
+      - "nyttjanderätt"
+      - "jordabalk"
+      - "arrende"
+      - "fast egendom"
+    secondary_keywords:
+      - "införsel"
+      - "utmätning"
+      - "löneutmätning"
+      - "utsökningslag"
+      - "beneficium"
+      - "utmätningsman"
+      - "kronofogde"
+      - "exekution"

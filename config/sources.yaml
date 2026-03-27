@@ -32,6 +32,33 @@ riksdagen_api:
     output_dir: "data/raw/forarbete/prop"
     errors_file: "data/raw/forarbete/prop_errors.jsonl"
 
+  bet:
+    list_endpoint: "/dokumentlista/"
+    doktyp: "bet"
+    utformat: "json"
+    pagesize: 200
+    document_html_endpoint: "/dokument/{dok_id}"
+    output_dir: "data/raw/bet"
+    errors_file: "data/raw/bet/bet_errors.jsonl"
+
+  rskr:
+    list_endpoint: "/dokumentlista/"
+    doktyp: "rskr"
+    utformat: "json"
+    pagesize: 200
+    document_html_endpoint: "/dokument/{dok_id}"
+    output_dir: "data/raw/rskr"
+    errors_file: "data/raw/rskr/rskr_errors.jsonl"
+
+  dir:
+    list_endpoint: "/dokumentlista/"
+    doktyp: "dir"
+    utformat: "json"
+    pagesize: 200
+    document_html_endpoint: "/dokument/{dok_id}"
+    output_dir: "data/raw/dir"
+    errors_file: "data/raw/dir/dir_errors.jsonl"
+
   # Ds (departementsserien) — förberett men ej aktivt i F-5a
   ds:
     list_endpoint: "/dokumentlista/"
@@ -39,8 +66,8 @@ riksdagen_api:
     utformat: "json"
     pagesize: 200
     document_html_endpoint: "/dokument/{dok_id}"
-    output_dir: "data/raw/forarbete/ds"
-    errors_file: "data/raw/forarbete/ds_errors.jsonl"
+    output_dir: "data/raw/ds"
+    errors_file: "data/raw/ds/ds_errors.jsonl"
     active: false   # Aktiveras i senare fas
 
   sfs:
