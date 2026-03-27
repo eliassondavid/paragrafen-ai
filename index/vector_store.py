@@ -13,27 +13,115 @@ import yaml
 logger = logging.getLogger("paragrafenai.noop")
 
 
-class ChromaVectorStore:
-    """Wrapper around a persistent ChromaDB instance."""
+class ConfigurationError(ValueError):
+    """Raised when the Chroma configuration is invalid for the requested setup."""
 
-    def __init__(self, config_path: str | Path = "config/embedding_config.yaml") -> None:
+
+class ChromaVectorStore:
+    """Wrapper around a persistent ChromaDB instance.
+
+    Supports two config formats in embedding_config.yaml:
+
+    New (chroma.instances):
+        chroma:
+          instances:
+            prop:
+              path: "data/index/chroma/prop"
+              collection: "paragrafen_prop_v1"
+            sou:
+              path: "data/index/chroma/sou"
+              collection: "paragrafen_sou_v1"
+
+    Legacy (chroma.persistent_path + collections):
+        chroma:
+          persistent_path: "data/index/chroma"
+          collections:
+            forarbete: "paragrafen_forarbete_v1"
+    """
+
+    def __init__(
+        self,
+        config_path: str | Path = "config/embedding_config.yaml",
+        instance_key: str | None = None,
+    ) -> None:
         self.repo_root = Path(__file__).resolve().parent.parent
         self.config_path = self._resolve_path(config_path)
         self.config = self._load_config(self.config_path)
+        self.instance_key = instance_key
 
         chroma_cfg = self.config.get("chroma", {})
-        self.collection_names: dict[str, str] = dict(chroma_cfg.get("collections", {}))
-        persistent_path = chroma_cfg["persistent_path"]
-        self.persistent_path = self._resolve_path(persistent_path)
-        self.persistent_path.mkdir(parents=True, exist_ok=True)
+
+        # New instances format takes precedence
+        instances = chroma_cfg.get("instances")
+        if instances and isinstance(instances, dict):
+            self._init_from_instances(instances, instance_key=instance_key)
+        elif "persistent_path" in chroma_cfg:
+            if instance_key is not None:
+                raise ConfigurationError(
+                    "instance_key kan bara användas när embedding_config.yaml "
+                    "har chroma.instances konfigurerat."
+                )
+            self._init_from_legacy(chroma_cfg)
+        else:
+            raise ConfigurationError(
+                "embedding_config.yaml saknar både chroma.instances och "
+                "chroma.persistent_path — kan inte initiera ChromaVectorStore."
+            )
+
+    def _init_from_instances(self, instances: dict[str, Any], *, instance_key: str | None) -> None:
+        """Initialize from chroma.instances format — one PersistentClient per instance."""
+        self.clients: dict[str, Any] = {}
+        self.collection_names: dict[str, str] = {}
+
+        selected_instances = instances
+        if instance_key is not None:
+            if instance_key not in instances:
+                available_keys = ", ".join(sorted(instances))
+                raise ConfigurationError(
+                    f"Okänd chroma.instances-nyckel: {instance_key!r}. "
+                    f"Tillgängliga nycklar: {available_keys}."
+                )
+            selected_instances = {instance_key: instances[instance_key]}
+
+        for key, inst_cfg in selected_instances.items():
+            path = self._resolve_path(inst_cfg["path"])
+            path.mkdir(parents=True, exist_ok=True)
+            collection_name = inst_cfg["collection"]
+
+            try:
+                client = chromadb.PersistentClient(path=str(path))
+                client.get_or_create_collection(name=collection_name)
+            except Exception as exc:
+                logger.error("Kunde inte initiera Chroma-instans %s: %s", key, exc)
+                raise
+
+            self.clients[collection_name] = client
+            self.collection_names[key] = collection_name
+
+        # Set self.client to first instance for backward compat
+        if self.clients:
+            self.client = next(iter(self.clients.values()))
+        else:
+            raise ConfigurationError("Inga chroma.instances konfigurerade.")
+
+    def _init_from_legacy(self, chroma_cfg: dict[str, Any]) -> None:
+        """Initialize from legacy persistent_path + collections format."""
+        self.collection_names = dict(chroma_cfg.get("collections", {}))
+        persistent_path = self._resolve_path(chroma_cfg["persistent_path"])
+        persistent_path.mkdir(parents=True, exist_ok=True)
 
         try:
-            self.client = chromadb.PersistentClient(path=str(self.persistent_path))
+            self.client = chromadb.PersistentClient(path=str(persistent_path))
         except Exception as exc:
             logger.error("Kunde inte initiera Chroma PersistentClient: %s", exc)
             raise
 
+        self.clients = {name: self.client for name in self.collection_names.values()}
         self._create_default_collections()
+
+    def _build_embedding_function(self) -> Any | None:
+        """Embeddings hanteras av Embedder-klassen — inte av ChromaDB."""
+        return None
 
     def _resolve_path(self, path_value: str | Path) -> Path:
         candidate = Path(path_value)
@@ -53,9 +141,19 @@ class ChromaVectorStore:
             except Exception as exc:
                 logger.error("Kunde inte skapa/hämta collection %s: %s", collection_name, exc)
 
+    def _get_client_for_collection(self, collection_name: str) -> Any:
+        """Resolve which PersistentClient owns a given collection name."""
+        resolved = self.collection_names.get(collection_name, collection_name)
+        client = self.clients.get(resolved)
+        if client is not None:
+            return client
+        # Fallback: try self.client (legacy single-instance)
+        return self.client
+
     def _get_or_create_collection(self, collection_name: str):
         resolved_name = self.collection_names.get(collection_name, collection_name)
-        return self.client.get_or_create_collection(name=resolved_name)
+        client = self._get_client_for_collection(collection_name)
+        return client.get_or_create_collection(name=resolved_name)
 
     def add_chunks(
         self,
@@ -146,7 +244,8 @@ class ChromaVectorStore:
         stats: dict[str, int] = {}
         for key, collection_name in self.collection_names.items():
             try:
-                collection = self.client.get_collection(collection_name)
+                client = self._get_client_for_collection(collection_name)
+                collection = client.get_collection(collection_name)
                 stats[collection_name] = collection.count()
             except Exception as exc:
                 logger.error("Kunde inte läsa count för %s (%s): %s", key, collection_name, exc)

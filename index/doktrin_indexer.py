@@ -1,4 +1,4 @@
-"""Index normalized proposition documents into ChromaDB."""
+"""Index normalized doktrin documents into ChromaDB."""
 
 from __future__ import annotations
 
@@ -9,25 +9,16 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-import re
 from typing import Any
-
-import yaml
 
 from index.embedder import Embedder
 from index.vector_store import ChromaVectorStore
-from normalize.prop_normalizer import build_citation
 
 logger = logging.getLogger("paragrafenai.noop")
 
-COLLECTION_NAME = "paragrafen_prop_v1"
+DOKTRIN_INSTANCE_KEY = "doktrin"
+COLLECTION_NAME = "paragrafen_doktrin_v1"
 EMBEDDING_MODEL = "KBLab/sentence-bert-swedish-cased"
-
-
-def build_prop_namespace(rm: str, nummer: int, chunk_index: int, part: int | None = None) -> str:
-    rm_norm = rm.replace("/", "-")
-    part_suffix = f"_d{part}" if part else ""
-    return f"prop::{rm_norm}_{nummer}{part_suffix}_chunk_{chunk_index:03d}"
 
 
 @dataclass
@@ -50,32 +41,26 @@ class IndexingSummary:
         }
 
 
-class PropIndexer:
-    """Indexes normalized proposition chunk JSON files into Chroma."""
+class DoktrinIndexer:
+    """Indexes normalized doktrin chunk JSON files into Chroma."""
 
     def __init__(
         self,
         *,
         config_path: str | Path = "config/embedding_config.yaml",
-        forarbete_rank_path: str | Path = "config/forarbete_rank.yaml",
-        input_dir: str | Path = "data/norm/prop",
-        errors_path: str | Path = "data/index/prop_indexing_errors.jsonl",
+        input_dir: str | Path = "data/norm/doktrin",
+        errors_path: str | Path = "data/index/doktrin_indexing_errors.jsonl",
         collection_name: str = COLLECTION_NAME,
         vector_store: ChromaVectorStore | None = None,
         embedder: Embedder | None = None,
     ) -> None:
         self.repo_root = Path(__file__).resolve().parent.parent
         self.config_path = self._resolve_path(config_path)
-        self.forarbete_rank_path = self._resolve_path(forarbete_rank_path)
         self.input_dir = self._resolve_path(input_dir)
         self.errors_path = self._resolve_path(errors_path)
         self.collection_name = collection_name
-        self.vector_store = vector_store or ChromaVectorStore(
-            config_path=self.config_path,
-            instance_key="prop",
-        )
-        self.embedder = embedder or Embedder(config_path=self.config_path)
-        self.prop_rank = self._load_prop_rank(self.forarbete_rank_path)
+        self.vector_store = vector_store
+        self.embedder = embedder
         self.error_rows: list[dict[str, Any]] = []
 
     def _resolve_path(self, path_value: str | Path) -> Path:
@@ -83,22 +68,6 @@ class PropIndexer:
         if path.is_absolute():
             return path
         return self.repo_root / path
-
-    def _load_yaml(self, path: Path) -> dict[str, Any]:
-        with path.open("r", encoding="utf-8") as fh:
-            return yaml.safe_load(fh) or {}
-
-    def _load_prop_rank(self, path: Path) -> int:
-        rank = self._load_yaml(path).get("forarbete_types", {}).get("proposition", {}).get("rank")
-        if not isinstance(rank, int):
-            raise ValueError("forarbete_rank för proposition saknas eller är inte int.")
-        return rank
-
-    def _extract_part(self, file_path: Path) -> int | None:
-        match = re.search(r"_d(\d+)\.json$", file_path.name)
-        if match:
-            return int(match.group(1))
-        return None
 
     def _serialize_list_field(self, value: Any) -> str:
         if isinstance(value, str):
@@ -137,66 +106,82 @@ class PropIndexer:
                 fh.write(json.dumps(row, ensure_ascii=False) + "\n")
 
     def _namespace_exists(self, namespace: str) -> bool:
+        if self.vector_store is None:
+            return False
         metadata = self.vector_store.get_one_metadata(
-            collection_name=self.collection_name,
+            instance_key=DOKTRIN_INSTANCE_KEY,
             where_filter={"namespace": namespace},
         )
         return metadata is not None
+
+    def _ensure_vector_store(self) -> ChromaVectorStore:
+        if self.vector_store is None:
+            self.vector_store = ChromaVectorStore(config_path=self.config_path)
+        return self.vector_store
+
+    def _ensure_embedder(self) -> Embedder:
+        if self.embedder is None:
+            self.embedder = Embedder(config_path=self.config_path)
+        return self.embedder
 
     def _build_chunk_metadata(
         self,
         document: dict[str, Any],
         chunk: dict[str, Any],
-        *,
-        part: int | None,
     ) -> tuple[str, dict[str, Any]] | None:
         text = str(chunk.get("text") or "").strip()
         if not text:
-            logger.warning("Skippade tom proposition-chunk för %s", document.get("beteckning", "okänt"))
+            logger.warning("Skippade tom doktrin-chunk för %s", document.get("title", "okänt"))
             return None
 
-        authority_level = str(document.get("authority_level") or "")
-        assert authority_level == "preparatory", "authority_level must be preparatory"
-        assert int(document.get("forarbete_rank", -1)) == self.prop_rank, "forarbete_rank mismatch"
+        authority_level = str(chunk.get("authority_level") or document.get("authority_level") or "")
+        assert authority_level == "persuasive", "authority_level must be persuasive"
 
-        rm = str(document.get("rm") or "")
-        nummer = int(document.get("nummer") or 0)
-        chunk_index = int(chunk.get("chunk_index") or 0)
-        namespace = build_prop_namespace(rm, nummer, chunk_index, part=part)
-        pinpoint = str(chunk.get("pinpoint") or "")
-        citation = str(chunk.get("citation") or "")
-        if not citation:
-            citation = build_citation(rm, nummer, pinpoint) if rm and nummer else str(document.get("beteckning") or "")
+        namespace = str(chunk.get("id") or chunk.get("namespace") or "").strip()
+        if not namespace:
+            raise ValueError("Doktrinchunk saknar namespace/id.")
 
-        metadata = {
+        metadata: dict[str, Any] = {
             "namespace": namespace,
-            "source_type": "forarbete",
-            "forarbete_type": "proposition",
-            "beteckning": str(document.get("beteckning") or ""),
-            "citation": citation,
-            "dok_id": str(document.get("dok_id") or ""),
+            "chunk_id": namespace,
+            "source_type": "doktrin",
+            "source_subtype": str(chunk.get("source_subtype") or document.get("source_subtype") or ""),
+            "title": str(chunk.get("title") or document.get("title") or ""),
+            "author": str(chunk.get("author") or document.get("author") or ""),
+            "author_last": str(chunk.get("author_last") or document.get("author_last") or ""),
+            "authors": str(chunk.get("authors") or json.dumps(document.get("authors") or [], ensure_ascii=False)),
+            "is_edited_volume": bool(chunk.get("is_edited_volume", document.get("is_edited_volume", False))),
+            "year": int(chunk.get("year") or document.get("year") or 0),
+            "edition": int(chunk.get("edition") or document.get("edition") or 1),
             "authority_level": authority_level,
-            "forarbete_rank": self.prop_rank,
-            "title": str(document.get("titel") or ""),
-            "section": str(chunk.get("section") or "other"),
-            "section_title": str(chunk.get("section_title") or "other"),
-            "pinpoint": pinpoint,
+            "citation_hd": str(chunk.get("citation_hd") or document.get("citation_hd") or ""),
+            "citation_academic": str(chunk.get("citation_academic") or document.get("citation_academic") or ""),
+            "pinpoint": str(chunk.get("pinpoint") or ""),
             "page_start": int(chunk.get("page_start") or 0),
             "page_end": int(chunk.get("page_end") or 0),
-            "legal_area": self._serialize_list_field(document.get("legal_area")),
-            "references_to": self._serialize_list_field(document.get("references_to")),
-            "rm": rm,
-            "nummer": nummer,
-            "datum": str(document.get("datum") or ""),
-            "organ": str(document.get("organ") or ""),
-            "source_url": str(document.get("source_url") or ""),
-            "pdf_url": str(document.get("pdf_url") or ""),
+            "legal_area": self._serialize_list_field(chunk.get("legal_area", document.get("legal_area"))),
+            "references_to": self._serialize_list_field(chunk.get("references_to", "[]")),
+            "excluded_at_retrieval": bool(
+                chunk.get("excluded_at_retrieval", document.get("excluded_at_retrieval", False))
+            ),
             "embedding_model": EMBEDDING_MODEL,
-            "chunk_index": chunk_index,
+            "chunk_index": int(chunk.get("chunk_index") or 0),
             "chunk_total": len(document.get("chunks") or []),
-            "fetched_at": str(document.get("fetched_at") or ""),
+            "avg_quality": float(chunk.get("avg_quality") or 0.0),
+            "extraction_method": str(chunk.get("extraction_method") or document.get("source_subtype") or ""),
+            "filename": str(chunk.get("filename") or document.get("filename") or ""),
+            "source_url": str(chunk.get("source_url") or document.get("source_url") or ""),
+            "urn": str(chunk.get("urn") or document.get("urn") or ""),
+            "license": str(chunk.get("license") or document.get("license") or ""),
+            "license_url": str(chunk.get("license_url") or document.get("license_url") or ""),
             "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
         }
+
+        for optional_key in ("isbn", "publisher", "series", "work_type"):
+            optional_value = str(chunk.get(optional_key) or document.get(optional_key) or "").strip()
+            if optional_value:
+                metadata[optional_key] = optional_value
+
         return text, metadata
 
     def index_all(
@@ -226,22 +211,20 @@ class PropIndexer:
                 summary.errors += 1
                 continue
 
-            part = self._extract_part(file_path)
-            first_chunk_index = int(chunks[0].get("chunk_index") or 0) if chunks else 0
-            first_namespace = build_prop_namespace(
-                str(document.get("rm") or ""),
-                int(document.get("nummer") or 0),
-                first_chunk_index,
-                part=part,
-            )
-            if chunks and self._namespace_exists(first_namespace):
+            first_namespace = str(chunks[0].get("id") or chunks[0].get("namespace") or "").strip() if chunks else ""
+            if first_namespace and self._namespace_exists(first_namespace):
                 summary.documents_skipped += 1
                 continue
 
             texts: list[str] = []
             metadatas: list[dict[str, Any]] = []
             for chunk in chunks:
-                built = self._build_chunk_metadata(document, chunk, part=part)
+                try:
+                    built = self._build_chunk_metadata(document, chunk)
+                except Exception as exc:
+                    self._record_error(file_path, f"Ogiltig chunk-metadata: {exc}")
+                    summary.errors += 1
+                    built = None
                 if built is None:
                     summary.chunks_skipped += 1
                     continue
@@ -258,14 +241,14 @@ class PropIndexer:
                 summary.chunks_indexed += len(texts)
                 continue
 
-            embeddings = self.embedder.embed(texts)
+            embeddings = self._ensure_embedder().embed(texts)
             if len(embeddings) != len(texts):
                 self._record_error(file_path, "Fel antal embeddings returnerades.")
                 summary.errors += 1
                 continue
 
-            added = self.vector_store.add_chunks(
-                collection_name=self.collection_name,
+            added = self._ensure_vector_store().add_chunks(
+                instance_key=DOKTRIN_INSTANCE_KEY,
                 chunks=texts,
                 embeddings=embeddings,
                 metadatas=metadatas,
@@ -283,9 +266,8 @@ class PropIndexer:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Index proposition norm documents into ChromaDB.")
-    parser.add_argument("--norm-dir", default="data/norm/prop")
-    parser.add_argument("--collection", default=COLLECTION_NAME)
+    parser = argparse.ArgumentParser(description="Index doktrin norm documents into ChromaDB.")
+    parser.add_argument("--norm-dir", default="data/norm/doktrin")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--max-docs", type=int, default=None)
@@ -294,14 +276,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.verbose:
         logging.basicConfig(level=logging.INFO)
 
-    config_path = Path("config/embedding_config.yaml")
-    indexer = PropIndexer(
-        config_path=config_path,
-        input_dir=args.norm_dir,
-        collection_name=args.collection,
-    )
+    indexer = DoktrinIndexer(input_dir=args.norm_dir)
     summary = indexer.index_all(dry_run=args.dry_run, max_docs=args.max_docs)
-
     print(summary.as_dict())
     failed_ratio = summary.errors / summary.documents_seen if summary.documents_seen else 0.0
     return 1 if failed_ratio > 0.01 else 0

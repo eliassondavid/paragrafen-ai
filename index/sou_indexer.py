@@ -1,14 +1,16 @@
-"""SOU indexing pipeline for F4."""
+"""Index normalized SOU documents into ChromaDB (paragrafen_sou_v1)."""
 
 from __future__ import annotations
 
+import argparse
+import hashlib
 import json
 import logging
-import re
-import uuid
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import datetime
 from pathlib import Path
+import re
+import tempfile
 from typing import Any
 
 import yaml
@@ -18,26 +20,13 @@ from index.vector_store import ChromaVectorStore
 
 logger = logging.getLogger("paragrafenai.noop")
 
+COLLECTION_NAME = "paragrafen_sou_v1"
+CHROMA_PATH = "data/index/chroma/sou"
+EMBEDDING_MODEL = "KBLab/sentence-bert-swedish-cased"
 
-REQUIRED_METADATA_FIELDS = {
-    "namespace",
-    "source_id",
-    "source_type",
-    "document_type",
-    "beteckning",
-    "title",
-    "year",
-    "department",
-    "section_title",
-    "legal_area",
-    "authority_level",
-    "pinpoint",
-    "embedding_model",
-    "chunk_index",
-    "chunk_total",
-    "source_url",
-    "indexed_at",
-}
+
+def build_sou_namespace(år: str, nr: int, chunk_index: int) -> str:
+    return f"forarbete::sou_{år}_{nr}_chunk_{chunk_index:03d}"
 
 
 @dataclass
@@ -46,6 +35,7 @@ class IndexingSummary:
     documents_indexed: int = 0
     documents_skipped: int = 0
     chunks_indexed: int = 0
+    chunks_skipped: int = 0
     errors: int = 0
 
     def as_dict(self) -> dict[str, int]:
@@ -54,316 +44,268 @@ class IndexingSummary:
             "documents_indexed": self.documents_indexed,
             "documents_skipped": self.documents_skipped,
             "chunks_indexed": self.chunks_indexed,
+            "chunks_skipped": self.chunks_skipped,
             "errors": self.errors,
         }
 
 
 class SouIndexer:
-    """Indexes normalized SOU chunk JSON files into Chroma."""
+    """Indexes normalized SOU chunk JSON files into Chroma (paragrafen_sou_v1)."""
 
     def __init__(
         self,
+        *,
         config_path: str | Path = "config/embedding_config.yaml",
-        legal_areas_path: str | Path = "config/legal_areas.yaml",
-        input_dir: str | Path = "data/norm/forarbete",
-        errors_path: str | Path = "data/index/indexing_errors.jsonl",
+        forarbete_rank_path: str | Path = "config/forarbete_rank.yaml",
+        input_dir: str | Path = "data/norm/sou",
+        errors_path: str | Path = "data/index/sou_indexing_errors.jsonl",
+        collection_name: str = COLLECTION_NAME,
+        chroma_path: str = CHROMA_PATH,
+        vector_store: ChromaVectorStore | None = None,
+        embedder: Embedder | None = None,
     ) -> None:
         self.repo_root = Path(__file__).resolve().parent.parent
-        self.config_path = self._resolve_path(config_path)
-        self.legal_areas_path = self._resolve_path(legal_areas_path)
-        self.input_dir = self._resolve_path(input_dir)
-        self.errors_path = self._resolve_path(errors_path)
+        self.config_path = self._resolve(config_path)
+        self.forarbete_rank_path = self._resolve(forarbete_rank_path)
+        self.input_dir = self._resolve(input_dir)
+        self.errors_path = self._resolve(errors_path)
+        self.collection_name = collection_name
+        self.chroma_path = chroma_path
 
-        self.config = self._load_yaml(self.config_path)
-        self.collection_name = str(self.config["chroma"]["collections"]["forarbete"])
+        # Bygg config med rätt chroma-sökväg
+        self._temp_config_path: Path | None = None
+        effective_config = self._build_config(self.config_path, chroma_path, collection_name)
 
-        self.vector_store = ChromaVectorStore(config_path=self.config_path)
-        self.embedder = Embedder(config_path=self.config_path)
-
-        self.valid_area_ids, self.alias_to_area_id = self._load_legal_areas(self.legal_areas_path)
+        self.vector_store = vector_store or ChromaVectorStore(config_path=effective_config)
+        self.embedder = embedder or Embedder(config_path=effective_config)
+        self.sou_rank = self._load_sou_rank(self.forarbete_rank_path)
         self.error_rows: list[dict[str, Any]] = []
-        self._last_progress_bucket = 0
 
-    def _resolve_path(self, path_value: str | Path) -> Path:
-        candidate = Path(path_value)
-        if candidate.is_absolute():
-            return candidate
-        return self.repo_root / candidate
+    def _resolve(self, path: str | Path) -> Path:
+        p = Path(path)
+        return p if p.is_absolute() else self.repo_root / p
+
+    def _build_config(self, config_path: Path, chroma_path: str, collection_name: str) -> Path:
+        """Skapa temporär config med rätt chroma-sökväg för SOU."""
+        with config_path.open("r", encoding="utf-8") as fh:
+            cfg = yaml.safe_load(fh) or {}
+
+        # Sätt absolut sökväg för SOU-instansen
+        abs_chroma = str(self.repo_root / chroma_path)
+        cfg.setdefault("chroma", {})["persistent_path"] = abs_chroma
+        cfg["chroma"].setdefault("collections", {})["forarbete"] = collection_name
+
+        tmp = tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".yaml", delete=False)
+        yaml.safe_dump(cfg, tmp, sort_keys=False, allow_unicode=True)
+        tmp.close()
+        self._temp_config_path = Path(tmp.name)
+        return self._temp_config_path
 
     def _load_yaml(self, path: Path) -> dict[str, Any]:
         with path.open("r", encoding="utf-8") as fh:
             return yaml.safe_load(fh) or {}
 
-    def _load_legal_areas(self, path: Path) -> tuple[set[str], dict[str, str]]:
-        payload = self._load_yaml(path)
-        valid_ids: set[str] = set()
-        alias_map: dict[str, str] = {}
+    def _load_sou_rank(self, path: Path) -> int:
+        rank = self._load_yaml(path).get("forarbete_types", {}).get("sou", {}).get("rank")
+        if not isinstance(rank, int):
+            raise ValueError("forarbete_rank för sou saknas eller är inte int.")
+        return rank
 
-        for item in payload.get("legal_areas", []):
-            area_id = str(item.get("id", "")).strip()
-            if not area_id:
-                continue
-            valid_ids.add(area_id)
-            alias_map[area_id.lower()] = area_id
-            for alias in item.get("aliases", []) or []:
-                alias_map[str(alias).strip().lower()] = area_id
+    def _serialize_list_field(self, value: Any) -> str:
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+            except (json.JSONDecodeError, ValueError):
+                parsed = [value] if value else []
+            else:
+                if isinstance(parsed, list):
+                    return json.dumps(parsed, ensure_ascii=False)
+                parsed = [str(parsed)]
+            return json.dumps(parsed, ensure_ascii=False)
+        if isinstance(value, list):
+            return json.dumps(value, ensure_ascii=False)
+        if value is None:
+            return json.dumps([], ensure_ascii=False)
+        return json.dumps([value], ensure_ascii=False)
 
-        return valid_ids, alias_map
-
-    def _record_error(self, file_path: Path, message: str, payload: dict[str, Any] | None = None) -> None:
-        row: dict[str, Any] = {
+    def _record_error(self, file_path: Path, message: str) -> None:
+        self.error_rows.append({
             "timestamp": datetime.utcnow().isoformat(timespec="seconds"),
             "file": str(file_path),
             "error": message,
-        }
-        if payload is not None:
-            row["payload"] = payload
-        self.error_rows.append(row)
+        })
         logger.error("%s (%s)", message, file_path.name)
 
     def _write_errors(self) -> None:
+        if not self.error_rows:
+            return
         self.errors_path.parent.mkdir(parents=True, exist_ok=True)
         with self.errors_path.open("w", encoding="utf-8") as fh:
             for row in self.error_rows:
                 fh.write(json.dumps(row, ensure_ascii=False) + "\n")
 
-    def _normalize_sou_beteckning(self, beteckning: str) -> str:
-        match = re.search(r"(\d{4})\s*:\s*(\d+)", beteckning)
-        if match:
-            year = int(match.group(1))
-            number = int(match.group(2))
-            return f"SOU_{year}_{number:03d}"
-        return re.sub(r"[^A-Za-z0-9]+", "_", beteckning).strip("_") or "SOU_OKAND"
-
-    def _normalize_section(self, section_title: str) -> str:
-        lowered = (section_title or "").lower()
-        lowered = lowered.replace("å", "a").replace("ä", "a").replace("ö", "o")
-        slug = re.sub(r"[^a-z0-9]+", "_", lowered).strip("_")
-        if not slug:
-            return "avsnitt_okand"
-        if slug[0].isdigit():
-            return f"avsnitt_{slug}"
-        return slug
-
-    def _build_namespace(self, beteckning: str, section_title: str, chunk_index: int) -> str:
-        sou_id = self._normalize_sou_beteckning(beteckning)
-        section_id = self._normalize_section(section_title)
-        return f"forarbete::{sou_id}_{section_id}_chunk_{chunk_index:03d}"
-
-    def _normalize_legal_area(self, raw_value: Any, source_file: Path) -> list[str]:
-        if raw_value is None:
-            return ["okänt"]
-
-        if isinstance(raw_value, str):
-            values = [raw_value]
-        elif isinstance(raw_value, list):
-            values = [str(item) for item in raw_value if str(item).strip()]
-        else:
-            values = [str(raw_value)]
-
-        normalized: list[str] = []
-        seen: set[str] = set()
-        for value in values:
-            key = value.strip().lower()
-            area_id = self.alias_to_area_id.get(key, value.strip())
-            if area_id not in self.valid_area_ids:
-                logger.warning("legal_area ej i legal_areas.yaml: %s (%s)", area_id, source_file.name)
-            if area_id and area_id not in seen:
-                seen.add(area_id)
-                normalized.append(area_id)
-
-        return normalized or ["okänt"]
-
-    def _validate_metadata(self, metadata: dict[str, Any], source_file: Path) -> bool:
-        missing = REQUIRED_METADATA_FIELDS.difference(metadata.keys())
-        if missing:
-            self._record_error(
-                source_file,
-                "Saknade metadata-fält",
-                {"missing_fields": sorted(missing), "namespace": metadata.get("namespace", "")},
-            )
-            return False
-        return True
-
-    def _get_existing_source_id_for_beteckning(self, beteckning: str) -> str | None:
+    def _namespace_exists(self, namespace: str) -> bool:
         metadata = self.vector_store.get_one_metadata(
             collection_name=self.collection_name,
-            where_filter={"beteckning": beteckning},
+            where_filter={"namespace": namespace},
         )
-        if not metadata:
-            return None
-        source_id = metadata.get("source_id")
-        return str(source_id) if source_id else None
+        return metadata is not None
 
-    def _is_document_already_indexed(self, source_id: str, beteckning: str) -> bool:
-        if source_id and self.vector_store.source_id_exists(self.collection_name, source_id):
-            return True
-
-        existing_source_id = self._get_existing_source_id_for_beteckning(beteckning)
-        if existing_source_id and self.vector_store.source_id_exists(self.collection_name, existing_source_id):
-            return True
-        return False
-
-    def _parse_chunk_index(self, chunk: dict[str, Any], fallback: int) -> int:
-        value = chunk.get("chunk_index", fallback)
-        try:
-            return int(value)
-        except (TypeError, ValueError):
-            return fallback
-
-    def _parse_chunk_total(self, chunk: dict[str, Any], fallback: int) -> int:
-        value = chunk.get("chunk_total", fallback)
-        try:
-            return int(value)
-        except (TypeError, ValueError):
-            return fallback
-
-    def _parse_year(self, document: dict[str, Any], beteckning: str) -> int:
-        year = document.get("year")
-        if isinstance(year, int):
-            return year
-        if isinstance(year, str) and year.isdigit():
-            return int(year)
-
-        match = re.search(r"(\d{4})\s*:", beteckning)
+    def _parse_beteckning(self, beteckning: str) -> tuple[str, int] | None:
+        match = re.search(r"(?i)\bSOU\s+(\d{4})\s*:\s*(\d+)\b", beteckning or "")
         if match:
-            return int(match.group(1))
-        return 0
+            return match.group(1), int(match.group(2))
+        return None
 
-    def _index_document(self, file_path: Path, summary: IndexingSummary) -> None:
-        try:
-            with file_path.open("r", encoding="utf-8") as fh:
-                document = json.load(fh)
-        except Exception as exc:
-            self._record_error(file_path, f"Kunde inte läsa JSON: {exc}")
-            summary.errors += 1
-            return
+    def _build_chunk_metadata(
+        self,
+        document: dict[str, Any],
+        chunk: dict[str, Any],
+    ) -> tuple[str, dict[str, Any]] | None:
+        text = str(chunk.get("text") or "").strip()
+        if not text:
+            return None
 
-        chunks = document.get("chunks")
-        if not isinstance(chunks, list):
-            self._record_error(file_path, "Dokument saknar chunks-lista")
-            summary.errors += 1
-            return
+        år = str(document.get("år") or "")
+        nr = int(document.get("nr") or 0)
+        chunk_index = int(chunk.get("chunk_index") or 0)
+        namespace = chunk.get("namespace") or build_sou_namespace(år, nr, chunk_index)
+        pinpoint = str(chunk.get("pinpoint") or "")
+        citation = str(chunk.get("citation") or f"SOU {år}:{nr}")
 
-        raw_beteckning = str(document.get("beteckning", "")).strip()
-        if not raw_beteckning:
-            raw_beteckning = f"OKÄND_{uuid.uuid4().hex[:8]}"
-            logger.warning("Saknar beteckning i %s, fallback används: %s", file_path.name, raw_beteckning)
+        metadata = {
+            "namespace":        namespace,
+            "source_type":      "forarbete",
+            "forarbete_type":   "sou",
+            "document_subtype": "sou",
+            "beteckning":       str(document.get("beteckning") or ""),
+            "citation":         citation,
+            "short_citation":   f"SOU {år}:{nr}",
+            "dok_id":           str(document.get("dok_id") or ""),
+            "authority_level":  "preparatory",
+            "forarbete_rank":   self.sou_rank,
+            "title":            str(document.get("titel") or ""),
+            "section":          str(chunk.get("section") or "other"),
+            "section_title":    str(chunk.get("section_title") or "other"),
+            "pinpoint":         pinpoint,
+            "page_start":       int(chunk.get("page_start") or 0),
+            "page_end":         int(chunk.get("page_end") or 0),
+            "legal_area":       self._serialize_list_field(document.get("legal_area")),
+            "references_to":    self._serialize_list_field(document.get("references_to")),
+            "år":               år,
+            "nr":               nr,
+            "riksmote":         str(document.get("riksmote") or ""),
+            "datum":            str(document.get("datum") or ""),
+            "organ":            str(document.get("organ") or ""),
+            "source_url":       str(document.get("source_url") or ""),
+            "embedding_model":  EMBEDDING_MODEL,
+            "chunk_index":      chunk_index,
+            "chunk_total":      len(document.get("chunks") or []),
+            "fetched_at":       str(document.get("fetched_at") or ""),
+            "sha256":           hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        }
+        return text, metadata
 
-        source_id = str(document.get("source_id", "")).strip() or str(uuid.uuid4())
+    def index_all(
+        self,
+        *,
+        dry_run: bool = False,
+        max_docs: int | None = None,
+    ) -> IndexingSummary:
+        summary = IndexingSummary()
+        files = sorted(f for f in self.input_dir.glob("*.json") if not f.name.startswith("_"))
+        if max_docs is not None:
+            files = files[:max_docs]
 
-        if self._is_document_already_indexed(source_id, raw_beteckning):
-            summary.documents_skipped += 1
-            logger.info("Hoppar över redan indexerat dokument: %s", raw_beteckning)
-            return
-
-        title = str(document.get("title", "")).strip()
-        year = self._parse_year(document, raw_beteckning)
-        department = str(document.get("department", "")).strip()
-        source_url = str(document.get("source_url", "")).strip()
-        indexed_at = date.today().isoformat()
-
-        prepared_texts: list[str] = []
-        prepared_metadatas: list[dict[str, Any]] = []
-
-        total_chunks = len(chunks)
-        for fallback_index, chunk in enumerate(chunks):
-            text = str(chunk.get("text", "") or "").strip()
-            if not text:
-                self._record_error(file_path, "Chunk saknar text", {"chunk_index": fallback_index})
+        for file_path in files:
+            summary.documents_seen += 1
+            try:
+                with file_path.open("r", encoding="utf-8") as fh:
+                    document = json.load(fh)
+            except Exception as exc:
+                self._record_error(file_path, f"Kunde inte läsa JSON: {exc}")
                 summary.errors += 1
                 continue
 
-            chunk_index = self._parse_chunk_index(chunk, fallback_index)
-            chunk_total = self._parse_chunk_total(chunk, total_chunks)
-            section_title = str(chunk.get("section_title", "")).strip()
-            pinpoint = str(chunk.get("pinpoint", "")).strip()
-            legal_area = self._normalize_legal_area(chunk.get("legal_area"), file_path)
-
-            metadata = {
-                "namespace": self._build_namespace(raw_beteckning, section_title, chunk_index),
-                "source_id": source_id,
-                "source_type": "forarbete",
-                "document_type": "SOU",
-                "beteckning": raw_beteckning,
-                "title": title,
-                "year": year,
-                "department": department,
-                "section_title": section_title,
-                "legal_area": legal_area,
-                "authority_level": "persuasive",
-                "pinpoint": pinpoint,
-                "embedding_model": self.embedder.model_name,
-                "chunk_index": chunk_index,
-                "chunk_total": chunk_total,
-                "source_url": source_url,
-                "indexed_at": indexed_at,
-            }
-
-            if not self._validate_metadata(metadata, file_path):
+            chunks = document.get("chunks") or []
+            if not isinstance(chunks, list):
+                self._record_error(file_path, "Dokumentet saknar chunk-lista.")
                 summary.errors += 1
                 continue
 
-            prepared_texts.append(text)
-            prepared_metadatas.append(metadata)
+            # Kontrollera om redan indexerat
+            år = str(document.get("år") or "")
+            nr = int(document.get("nr") or 0)
+            first_ns = build_sou_namespace(år, nr, 0)
+            if chunks and self._namespace_exists(first_ns):
+                summary.documents_skipped += 1
+                continue
 
-        if not prepared_texts:
-            logger.warning("Inga indexerbara chunks i %s", file_path.name)
-            return
+            texts: list[str] = []
+            metadatas: list[dict[str, Any]] = []
+            for chunk in chunks:
+                built = self._build_chunk_metadata(document, chunk)
+                if built is None:
+                    summary.chunks_skipped += 1
+                    continue
+                text, metadata = built
+                texts.append(text)
+                metadatas.append(metadata)
 
-        indexed_for_document = 0
-        for start in range(0, len(prepared_texts), 100):
-            end = start + 100
-            batch_texts = prepared_texts[start:end]
-            batch_metadatas = prepared_metadatas[start:end]
-            embeddings = self.embedder.embed(batch_texts)
-            if len(embeddings) != len(batch_texts):
-                self._record_error(
-                    file_path,
-                    "Embedding-resultat matchar inte batchstorlek",
-                    {"expected": len(batch_texts), "actual": len(embeddings)},
-                )
+            if not texts:
+                summary.documents_skipped += 1
+                continue
+
+            if dry_run:
+                summary.documents_indexed += 1
+                summary.chunks_indexed += len(texts)
+                continue
+
+            embeddings = self.embedder.embed(texts)
+            if len(embeddings) != len(texts):
+                self._record_error(file_path, "Fel antal embeddings returnerades.")
                 summary.errors += 1
                 continue
 
             added = self.vector_store.add_chunks(
                 collection_name=self.collection_name,
-                chunks=batch_texts,
+                chunks=texts,
                 embeddings=embeddings,
-                metadatas=batch_metadatas,
+                metadatas=metadatas,
             )
-            indexed_for_document += added
+            if added != len(texts):
+                self._record_error(file_path, f"Endast {added}/{len(texts)} chunks indexerades.")
+                summary.errors += 1
+                continue
+
+            summary.documents_indexed += 1
             summary.chunks_indexed += added
 
-            progress_bucket = summary.chunks_indexed // 500
-            if progress_bucket > self._last_progress_bucket:
-                logger.info("Indexerade chunks: %s", summary.chunks_indexed)
-                self._last_progress_bucket = progress_bucket
-
-        if indexed_for_document > 0:
-            summary.documents_indexed += 1
-
-    def index_all(self) -> dict[str, int]:
-        summary = IndexingSummary()
-        files = sorted(self.input_dir.glob("*.json"))
-        if not files:
-            logger.info("Ingen indata hittad i %s", self.input_dir)
-            self._write_errors()
-            return summary.as_dict()
-
-        for file_path in files:
-            summary.documents_seen += 1
-            self._index_document(file_path, summary)
-
         self._write_errors()
-        return summary.as_dict()
+        if self._temp_config_path and self._temp_config_path.exists():
+            self._temp_config_path.unlink()
+
+        return summary
 
 
-def main() -> None:
-    indexer = SouIndexer()
-    result = indexer.index_all()
-    logger.info("Indexering klar: %s", result)
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Index SOU norm documents into ChromaDB.")
+    parser.add_argument("--norm-dir", default="data/norm/sou")
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--verbose", action="store_true")
+    parser.add_argument("--max-docs", type=int, default=None)
+    args = parser.parse_args(argv)
+
+    if args.verbose:
+        logging.basicConfig(level=logging.INFO)
+
+    indexer = SouIndexer(input_dir=args.norm_dir)
+    summary = indexer.index_all(dry_run=args.dry_run, max_docs=args.max_docs)
+    print(summary.as_dict())
+
+    failed_ratio = summary.errors / summary.documents_seen if summary.documents_seen else 0.0
+    return 1 if failed_ratio > 0.01 else 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
