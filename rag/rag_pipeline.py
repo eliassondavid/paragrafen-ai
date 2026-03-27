@@ -82,6 +82,7 @@ class RagPipeline:
     """Komplett RAG-pipeline för §AI."""
 
     def __init__(self, config_path: str = "config/rag_config.yaml") -> None:
+        self._repo_root = Path(__file__).resolve().parent.parent
         cfg_file = Path(config_path)
         with cfg_file.open(encoding="utf-8") as fh:
             raw = yaml.safe_load(fh)
@@ -91,13 +92,16 @@ class RagPipeline:
         self._top_k: int = cfg.get("top_k", 10)
         self._llm_model: str = cfg.get("llm_model", "claude-opus-4-6")
         self._llm_max_tokens: int = cfg.get("llm_max_tokens", 2048)
+        embedding_config_path = self._resolve_path(
+            cfg.get("embedding_config_path", "config/embedding_config.yaml")
+        )
         self._collections: list[str] = cfg.get(
             "collections", ["paragrafen_sfs_v1", "paragrafen_forarbete_v1"]
         )
 
         self._area_blocker = AreaBlocker()
-        self._embedder = Embedder(config_path=config_path)
-        self._vector_store = ChromaVectorStore(config_path=config_path)
+        self._embedder = Embedder(config_path=embedding_config_path)
+        self._vector_store = ChromaVectorStore(config_path=embedding_config_path)
         self._norm_boost = NormBoost()
         self._confidence_gate = ConfidenceGate()
         self._klarsprak = KlarsprakLayer(config_dir=self._config_dir)
@@ -112,6 +116,12 @@ class RagPipeline:
         self._anthropic = anthropic.Anthropic(api_key=api_key)
 
         logger.debug("RagPipeline initialiserad med modell=%s top_k=%d", self._llm_model, self._top_k)
+
+    def _resolve_path(self, path_value: str | Path) -> str:
+        candidate = Path(path_value)
+        if candidate.is_absolute():
+            return str(candidate)
+        return str(self._repo_root / candidate)
 
     # ------------------------------------------------------------------
     # Publik metod
