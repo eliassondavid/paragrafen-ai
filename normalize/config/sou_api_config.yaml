@@ -1,0 +1,27 @@
+# config/sou_api_config.yaml
+# §AI — SOU-pipeline konfiguration
+# Skapad av F-3 Codex-leveransen (2026-02-27)
+# Används av: normalize/metadata_builder.py
+
+source_type: "forarbete"
+doc_type_sou: "sou"
+authority_level_default: "preparatory"
+authority_level_non_binding: "preparatory"
+legal_areas_file: "config/legal_areas.yaml"
+
+sfs_extraction:
+  pattern: '\b(\d{4})\s*:\s*(\d+)\b'
+  year_min: 1700
+  year_max: 2030
+  number_min: 1
+  number_max: 9999
+
+# Indexer-konfiguration (tillagd F-4)
+indexer:
+  published_dir: "data/published/forarbete/sou"
+  chroma_path: "data/index/chroma"
+  collection_name: "paragrafen_forarbete_v1"
+  embedding_model: "KBLab/sentence-bert-swedish-cased"
+  batch_size: 32
+  log_every_n_docs: 100
+  skipped_documents_path: "data/skipped_documents.json"

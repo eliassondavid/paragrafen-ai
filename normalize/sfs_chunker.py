@@ -11,6 +11,7 @@ Regler:
 
 import json
 import uuid
+import re
 import logging
 from pathlib import Path
 
@@ -31,7 +32,47 @@ def _make_namespace(sfs_nr: str, kapitel: str, paragraf: str, numbering_type: st
         kap_str = f"{kapitel}kap"
     else:
         kap_str = "0kap"
+    if not paragraf:
+        return f"sfs::{sfs_nr}_{kap_str}_p{chunk_idx:03d}_chunk_{chunk_idx:03d}"
     return f"sfs::{sfs_nr}_{kap_str}_{paragraf}§_chunk_{chunk_idx:03d}"
+
+
+def _para_num(paragraf: str) -> int:
+    """Extraherar numeriskt värde ur paragraf-sträng för jämförelse.
+    '5' -> 5, '5a' -> 5, '3-13' -> 3 (tar första talet), '' -> 0.
+    """
+    m = re.match(r"(\d+)", str(paragraf or ""))
+    return int(m.group(1)) if m else 0
+
+
+def _resolve_namespace_collisions(chunks: list[dict]) -> list[dict]:
+    """
+    Detekterar och löser namespace-kollisioner i en färdig chunk-lista.
+
+    Om flera chunks har identiskt namespace: tilldela dem chunk_idx 0, 1, 2...
+    och uppdatera namespace och chunk_total därefter.
+
+    Chunks med unikt namespace lämnas oförändrade.
+    """
+    groups: dict[str, list[dict]] = {}
+
+    for chunk in chunks:
+        namespace = chunk.get("namespace", "")
+        groups.setdefault(namespace, []).append(chunk)
+
+    for namespace, group in groups.items():
+        if len(group) <= 1:
+            continue
+
+        base = re.sub(r"_chunk_\d{3}$", "", namespace)
+        logger.debug("namespace_kollision_löst: %s ×%d", base, len(group))
+
+        for chunk_idx, chunk in enumerate(group):
+            chunk["namespace"] = f"{base}_chunk_{chunk_idx:03d}"
+            chunk["chunk_index"] = chunk_idx
+            chunk["chunk_total"] = len(group)
+
+    return chunks
 
 
 def chunk_paragraphs(paragraphs: list[dict], sfs_nr: str, meta: dict) -> list[dict]:
@@ -71,6 +112,20 @@ def chunk_paragraphs(paragraphs: list[dict], sfs_nr: str, meta: dict) -> list[di
                     break
             
             if j > i + 1:
+                # Kontrollera att slutparagrafen inte är lägre än startparagrafen
+                start_num = _para_num(para["paragraf"])
+                end_num   = _para_num(paragraphs[j-1]["paragraf"])
+                if end_num > 0 and end_num < start_num:
+                    # Bakvänd ordning — indexera startparagrafen som egen chunk
+                    logger.debug(
+                        "merge_bakvänd_ordning_skippad: %s -> %s i %s",
+                        para["paragraf"], paragraphs[j-1]["paragraf"], sfs_nr,
+                    )
+                    chunk = _make_chunk(sfs_nr, para, text, "", meta, chunk_idx=0, chunk_total=1)
+                    chunks.append(chunk)
+                    i += 1
+                    continue
+
                 # Merged chunk — använd sista paragrafens nummer som slutnyckel
                 chunk = _make_chunk(sfs_nr, para, merged_text, "", meta, chunk_idx=0, chunk_total=1)
                 chunk["paragraf"] = f"{para['paragraf']}-{paragraphs[j-1]['paragraf']}"
@@ -118,6 +173,7 @@ def chunk_paragraphs(paragraphs: list[dict], sfs_nr: str, meta: dict) -> list[di
         
         i += 1
     
+    chunks = _resolve_namespace_collisions(chunks)
     return chunks
 
 

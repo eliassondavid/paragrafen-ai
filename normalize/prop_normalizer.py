@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from html import escape
 import json
 import logging
 from pathlib import Path
@@ -73,19 +74,29 @@ def normalize_one(
     rank_config_path: str | Path = "config/forarbete_rank.yaml",
 ) -> dict[str, Any] | None:
     """Normalize one raw proposition document into norm format."""
-    html_content = str(raw.get("html_content") or "").strip()
-    html_available = bool(raw.get("html_available"))
-    if not html_available or not html_content:
-        logger.warning("Hoppar över proposition utan HTML: %s", raw.get("beteckning", "okänt"))
+    html_content = _resolve_html_content(raw)
+    is_curated = _is_curated_prop(raw)
+    if not html_content:
+        message = f"Hoppar över proposition utan HTML: {raw.get('beteckning', 'okänt')}"
+        if is_curated:
+            logger.error("Curerad prop-fil producerade 0 chunks: %s", message)
+        else:
+            logger.warning(message)
         return None
 
     sections = parse_prop_html(html_content, str(raw.get("dok_id") or ""))
     if not sections:
-        logger.warning("Parsern returnerade inga sektioner: %s", raw.get("beteckning", "okänt"))
+        if is_curated:
+            logger.error(
+                "Curerad prop-fil producerade 0 chunks: parsern returnerade inga sektioner för %s",
+                raw.get("beteckning", "okänt"),
+            )
+        else:
+            logger.warning("Parsern returnerade inga sektioner: %s", raw.get("beteckning", "okänt"))
         return None
 
     rank = load_prop_rank(rank_config_path)
-    rm = str(raw.get("rm") or "").strip()
+    rm = str(raw.get("rm") or raw.get("riksmote_norm") or raw.get("riksmote") or "").strip()
     nummer = _coerce_int(raw.get("nummer"))
     organ = str(raw.get("organ") or "").strip()
     legal_area = classify_legal_area(organ)
@@ -113,7 +124,13 @@ def normalize_one(
             )
 
     if not chunks:
-        logger.warning("Inga norm-chunks skapades för %s", raw.get("beteckning", "okänt"))
+        if is_curated:
+            logger.error(
+                "Curerad prop-fil producerade 0 chunks: inga norm-chunks skapades för %s",
+                raw.get("beteckning", "okänt"),
+            )
+        else:
+            logger.warning("Inga norm-chunks skapades för %s", raw.get("beteckning", "okänt"))
         return None
 
     return {
@@ -139,7 +156,7 @@ def normalize_one(
 
 def normalize_all(
     raw_dir: str | Path = "data/raw/forarbete/prop",
-    norm_dir: str | Path = "data/norm/forarbete/prop",
+    norm_dir: str | Path = "data/norm/prop",
     *,
     force: bool = False,
     max_docs: int | None = None,
@@ -190,6 +207,43 @@ def _coerce_int(value: Any) -> int:
         return int(value)
     except (TypeError, ValueError):
         return 0
+
+
+def _is_curated_prop(raw: dict[str, Any]) -> bool:
+    return bool(raw.get("pages")) or bool(raw.get("curated_by")) or bool(raw.get("curated_note"))
+
+
+def _resolve_html_content(raw: dict[str, Any]) -> str:
+    html_content = str(raw.get("html_content") or "").strip()
+    if html_content:
+        return html_content
+    return _build_html_from_pages(raw.get("pages"))
+
+
+def _build_html_from_pages(pages: Any) -> str:
+    if not isinstance(pages, list):
+        return ""
+
+    html_pages: list[str] = []
+    for page in pages:
+        if not isinstance(page, dict):
+            continue
+        page_num = _coerce_int(page.get("page_num"))
+        page_text = str(page.get("text") or "").strip()
+        if page_num <= 0 or not page_text:
+            continue
+        paragraphs = [
+            f"<p>{escape(line.strip())}</p>"
+            for line in page_text.splitlines()
+            if line.strip()
+        ]
+        if not paragraphs:
+            continue
+        html_pages.append(f'<div id="page_{page_num}">{"".join(paragraphs)}</div>')
+
+    if not html_pages:
+        return ""
+    return f"<html><body>{''.join(html_pages)}</body></html>"
 
 
 def _chunk_section_text(text: str) -> list[str]:
@@ -272,7 +326,7 @@ def _count_tokens(text: str) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Normalize raw proposition documents.")
     parser.add_argument("--raw-dir", default="data/raw/forarbete/prop")
-    parser.add_argument("--norm-dir", default="data/norm/forarbete/prop")
+    parser.add_argument("--norm-dir", default="data/norm/prop")
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--max-docs", type=int, default=None)
     args = parser.parse_args(argv)

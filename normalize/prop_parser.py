@@ -39,7 +39,17 @@ def parse_prop_html(html_content: str, dok_id: str = "") -> list[dict[str, Any]]
         dok_id or "okänt",
     )
     fallback_sections = _parse_fallback_sections(soup)
-    return _split_commentary_sections(_filter_toc_sections(fallback_sections))
+    if fallback_sections is not None:
+        return _split_commentary_sections(_filter_toc_sections(fallback_sections))
+
+    if _looks_like_pdf2htmlex(html_content):
+        logger.warning(
+            "Dokument %s använder pdf2htmlEX-markup utan identifierbara sektioner — använder defensiv textfallback",
+            dok_id or "okänt",
+        )
+        return [_build_full_text_fallback(soup, html_content)]
+
+    return [_build_full_text_fallback(soup, html_content)]
 
 
 def _parse_page_sections(soup: BeautifulSoup) -> list[dict[str, Any]] | None:
@@ -62,6 +72,9 @@ def _parse_page_sections(soup: BeautifulSoup) -> list[dict[str, Any]] | None:
         )
 
     if not pages:
+        return None
+
+    if not any(page["raw_text"] for page in pages):
         return None
 
     pages.sort(key=lambda item: item["page"])
@@ -120,20 +133,12 @@ def _parse_page_sections(soup: BeautifulSoup) -> list[dict[str, Any]] | None:
     return sections
 
 
-def _parse_fallback_sections(soup: BeautifulSoup) -> list[dict[str, Any]]:
+def _parse_fallback_sections(soup: BeautifulSoup) -> list[dict[str, Any]] | None:
     full_text = _normalize_page_text(soup.get_text("\n", strip=True), preserve_breaks=True)
     search_text = _normalize_page_text(full_text)
     matches = _find_all_section_matches(search_text)
     if not matches:
-        return [
-            {
-                "section": "other",
-                "section_title": "other",
-                "text": full_text,
-                "page_start": 0,
-                "page_end": 0,
-            }
-        ]
+        return None
 
     sections: list[dict[str, Any]] = []
     if matches[0]["start"] > 0:
@@ -163,6 +168,23 @@ def _parse_fallback_sections(soup: BeautifulSoup) -> list[dict[str, Any]]:
     return sections
 
 
+def _looks_like_pdf2htmlex(html_content: str) -> bool:
+    return "<!-- APA-" in html_content or "#page_1 {position:relative" in html_content
+
+
+def _build_full_text_fallback(soup: BeautifulSoup, html_content: str = "") -> dict[str, Any]:
+    text = _normalize_page_text(soup.get_text("\n", strip=True), preserve_breaks=True)
+    if not text.strip() and html_content:
+        text = _normalize_page_text(html_content, preserve_breaks=True)
+    return {
+        "section": "other",
+        "section_title": "other",
+        "text": text,
+        "page_start": 0,
+        "page_end": 0,
+    }
+
+
 def _join_page_texts(pages: list[dict[str, Any]], start_page: int, end_page: int) -> str:
     texts = [
         page["raw_text"]
@@ -185,7 +207,7 @@ def _find_section_match(text: str) -> tuple[str, str] | None:
         match = re.search(pattern, text)
         if not match:
             continue
-        if match.start() > 80:
+        if match.start() > 5:
             continue
         candidate = (section_name, _normalize_page_text(match.group(0)), match.start())
         if best_match is None or candidate[2] < best_match[2]:
