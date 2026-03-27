@@ -1,0 +1,22 @@
+modules:
+  allman_assistent:
+    enabled: true
+    label: "Juridisk assistent"
+    icon: "💬"
+    rag_module: "allman"
+    requires_api_key: false
+
+  framtidsfullmakt:
+    enabled: false
+    label: "Framtidsfullmakt"
+    icon: "📄"
+    rag_module: "framtidsfullmakt"
+    requires_api_key: true
+
+  upphandling:
+    enabled: false
+    label: "Upphandling"
+    icon: "🏛️"
+    rag_module: "upphandling"
+    requires_api_key: true
+
