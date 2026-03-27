@@ -20,3 +20,27 @@ models/
 # OS
 .DS_Store
 *.swp
+
+# === Loggfiler ===
+*.log
+logs/
+
+# === Temporära data ===
+*.csv
+chroma_baseline.txt
+chroma_db/
+data/chroma/
+
+# === Tillfälliga skript (ej del av pipelinen) ===
+diag_normalize.py
+patch_sfs_*.py
+post_normalize.py
+build_curated_prop.py
+
+# === Checkpoints (återskapas vid körning) ===
+data/state/checkpoints/
+
+# === OS ===
+.DS_Store
+__pycache__/
+*.pyc
