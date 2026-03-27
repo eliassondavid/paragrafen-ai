@@ -146,6 +146,10 @@ def test_normalize_prop_beteckning_uses_normalized_riksmote_year() -> None:
     assert prop_fetcher.normalize_prop_beteckning("Prop. 2016/17:180") == "prop_2016-17_180"
 
 
+def test_normalize_riksmote_handles_four_digit_end_year() -> None:
+    assert prop_fetcher.normalize_riksmote("1999/2000") == "1999-2000"
+
+
 def test_prop_fetcher_normalizes_protocol_relative_urls_and_pdf_url(tmp_path: Path) -> None:
     config_path = _write_sources_config(tmp_path)
     session = Mock(spec=requests.Session)
@@ -176,3 +180,75 @@ def test_prop_fetcher_normalizes_protocol_relative_urls_and_pdf_url(tmp_path: Pa
     assert payload["dokument_url_html"] == "https://data.riksdagen.se/dokument/A1.html"
     assert payload["pdf_url"] == "https://data.riksdagen.se/dokument/A1.pdf"
     assert payload["html_available"] is True
+
+
+def test_extract_part_from_dok_id_handles_modern_and_legacy_suffixes() -> None:
+    assert prop_fetcher.extract_part_from_dok_id("GY03165") is None
+    assert prop_fetcher.extract_part_from_dok_id("GY03165d2") == 2
+    assert prop_fetcher.extract_part_from_dok_id("GY03165d3") == 3
+    assert prop_fetcher.extract_part_from_dok_id("GN032D1") == 2
+
+
+def test_prop_fetcher_saves_multipart_documents_with_unique_filenames(tmp_path: Path) -> None:
+    config_path = _write_sources_config(tmp_path)
+    session = Mock(spec=requests.Session)
+    session.get.side_effect = [
+        _response(
+            json_data=_payload(
+                1,
+                1,
+                [
+                    {"beteckning": "165", "dok_id": "GY03165", "rm": "2010/11", "nummer": "165"},
+                    {"beteckning": "165", "dok_id": "GY03165d2", "rm": "2010/11", "nummer": "165"},
+                    {"beteckning": "165", "dok_id": "GY03165d3", "rm": "2010/11", "nummer": "165"},
+                ],
+            )
+        ),
+        _response(text="<html>d1</html>", headers={"Content-Type": "text/html"}),
+        _response(text="<html>d2</html>", headers={"Content-Type": "text/html"}),
+        _response(text="<html>d3</html>", headers={"Content-Type": "text/html"}),
+    ]
+
+    with patch("ingest.prop_fetcher.time.sleep", return_value=None):
+        saved = prop_fetcher.fetch_prop_documents(config_path=config_path, session=session)
+
+    assert saved == 3
+    filenames = sorted(path.name for path in (tmp_path / "prop").glob("*.json"))
+    assert filenames == [
+        "prop_2010-11_165.json",
+        "prop_2010-11_165_d2.json",
+        "prop_2010-11_165_d3.json",
+    ]
+
+
+def test_prop_fetcher_adds_legacy_d1_text_documents_to_skip_list(tmp_path: Path) -> None:
+    config_path = _write_sources_config(tmp_path)
+    session = Mock(spec=requests.Session)
+    session.get.side_effect = [
+        _response(
+            json_data=_payload(
+                1,
+                1,
+                [
+                    {
+                        "beteckning": "2D1",
+                        "dok_id": "GN032D1",
+                        "rm": "1999/2000",
+                        "nummer": "2",
+                        "htmlformat": "text/html",
+                    }
+                ],
+            )
+        )
+    ]
+
+    with patch("ingest.prop_fetcher.time.sleep", return_value=None):
+        saved = prop_fetcher.fetch_prop_documents(config_path=config_path, session=session)
+
+    assert saved == 0
+    assert list((tmp_path / "prop").glob("*.json")) == []
+    skip_entries = [
+        json.loads(line)
+        for line in (tmp_path / "prop" / "_skip_list.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert skip_entries[0]["dok_id"] == "GN032D1"

@@ -47,7 +47,8 @@ def test_prop_normalizer_populates_required_metadata_without_none(tmp_path: Path
     assert result is not None
     assert result["authority_level"] == "preparatory"
     assert result["forarbete_rank"] == 2
-    assert all(value is not None for key, value in result.items() if key != "chunks")
+    assert all(value is not None for key, value in result.items() if key not in {"chunks", "part"})
+    assert result["part"] is None
     assert all(all(chunk.get(field) is not None for field in chunk) for chunk in result["chunks"])
 
 
@@ -65,3 +66,25 @@ def test_build_pinpoint() -> None:
 def test_build_citation() -> None:
     assert prop_normalizer.build_citation("2016/17", 180, "s. 45–47") == "Prop. 2016/17:180 s. 45–47"
     assert prop_normalizer.build_citation("2016/17", 180, "") == "Prop. 2016/17:180"
+
+
+def test_normalize_prop_preserves_part_value(tmp_path: Path) -> None:
+    raw = {
+        "beteckning": "Prop. 2010/11:165",
+        "dok_id": "GY03165d2",
+        "rm": "2010/11",
+        "nummer": 165,
+        "titel": "Del 2",
+        "datum": "2011-06-01",
+        "organ": "Justitiedepartementet",
+        "source_url": "https://data.riksdagen.se/dokument/GY03165d2",
+        "pdf_url": "https://data.riksdagen.se/dokument/GY03165d2.pdf",
+        "fetched_at": "2026-03-06T14:00:00Z",
+        "html_available": True,
+        "html_content": "<div id=\"page_1\">Bakgrund Del 2-text.</div>",
+    }
+
+    result = prop_normalizer.normalize_prop(raw, part=2, rank_config_path=_rank_config(tmp_path))
+
+    assert result is not None
+    assert result["part"] == 2

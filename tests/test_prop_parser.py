@@ -90,3 +90,27 @@ def test_prop_parser_extends_section_over_nonmatching_page_between_matches() -> 
 
     assert sections[0]["section"] == "background"
     assert sections[0]["page_end"] == 2
+
+
+def test_prop_parser_pdf2htmlex_without_page_ids_falls_back_to_full_text() -> None:
+    html = """
+    <html>
+      <body>
+        <!-- APA-123 -->
+        <style>
+          #page_1 {position:relative; overflow:hidden;}
+        </style>
+        <div class="page"><span>Första raden.</span><span>Andra raden.</span></div>
+      </body>
+    </html>
+    """
+
+    sections = parse_prop_html(html, "HC03180")
+
+    assert len(sections) == 1
+    assert sections[0]["section"] == "other"
+    assert sections[0]["section_title"] == "other"
+    assert sections[0]["page_start"] == 0
+    assert sections[0]["page_end"] == 0
+    assert "Första raden." in sections[0]["text"]
+    assert "Andra raden." in sections[0]["text"]

@@ -49,6 +49,7 @@ def _write_norm_doc(tmp_path: Path, filename: str = "prop_2016-17_180.json") -> 
         "dok_id": "HC03180",
         "rm": "2016/17",
         "nummer": 180,
+        "part": None,
         "titel": "Titel",
         "datum": "2017-03-16",
         "organ": "Justitiedepartementet",
@@ -161,3 +162,23 @@ def test_prop_indexer_keeps_pdf_url_in_metadata(tmp_path: Path) -> None:
     metadata = indexer.vector_store.add_calls[0]["metadatas"][0]
 
     assert metadata["pdf_url"] == "https://data.riksdagen.se/dokument/HC03180.pdf"
+
+
+def test_prop_indexer_prefers_part_from_norm_document(tmp_path: Path) -> None:
+    norm_dir = _write_norm_doc(tmp_path, filename="prop_2016-17_180.json")
+    doc_path = norm_dir / "prop_2016-17_180.json"
+    payload = json.loads(doc_path.read_text(encoding="utf-8"))
+    payload["part"] = 2
+    doc_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+    indexer = PropIndexer(
+        input_dir=norm_dir,
+        forarbete_rank_path=_rank_config(tmp_path),
+        vector_store=FakeVectorStore(),
+        embedder=FakeEmbedder(),
+    )
+
+    indexer.index_all()
+    metadata = indexer.vector_store.add_calls[0]["metadatas"][0]
+
+    assert metadata["namespace"] == "forarbete::prop_2016-17_180_d2_chunk_000"
