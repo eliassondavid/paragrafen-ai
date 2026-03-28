@@ -1,0 +1,30 @@
+forverkandegrunder:
+  obetald_hyra:
+    lagrum: "JB 12 kap. 42 § 1 st. 1 p."
+    rattelse_lagrum: "JB 12 kap. 44 § 4 st."
+    socialnamnden: true
+    rattelse_mojlig: true
+  storningar:
+    lagrum: "JB 12 kap. 42 § 1 st. 9 p."
+    rattelse_lagrum: "JB 12 kap. 42 § 4 st."
+    socialnamnden: true
+    rattelse_mojlig: true
+  otillaten_andrahand:
+    lagrum: "JB 12 kap. 42 § 1 st. 3 p."
+    rattelse_lagrum: "JB 12 kap. 43 §"
+    socialnamnden: false
+    rattelse_mojlig: true
+  vanvard:
+    lagrum: "JB 12 kap. 42 § 1 st. 8 p."
+    rattelse_lagrum: "JB 12 kap. 43 §"
+    socialnamnden: false
+    rattelse_mojlig: true
+  brottslig_verksamhet:
+    lagrum: "JB 12 kap. 42 § 1 st. 9 p."
+    socialnamnden: true
+    rattelse_mojlig: false
+  vagran_tilltrade:
+    lagrum: "JB 12 kap. 42 § 1 st. 6 p."
+    rattelse_lagrum: "JB 12 kap. 43 §"
+    socialnamnden: false
+    rattelse_mojlig: true

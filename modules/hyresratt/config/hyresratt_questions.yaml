@@ -1,0 +1,52 @@
+uppsagning:
+  - id: namn
+    label: Namn
+    type: text
+  - id: bostadstyp
+    label: Bostadstyp
+    type: select
+    options: ["lägenhet", "rum", "lokal"]
+  - id: datum_mottagen
+    label: När togs uppsägningen emot?
+    type: date
+  - id: uppsagningstyp
+    label: Typ av uppsägning
+    type: select
+    options: ["förverkande", "uppsägning", "okänd"]
+  - id: grund
+    label: Vad anger hyresvärden som grund?
+    type: select
+    options:
+      [
+        "obetald_hyra",
+        "störningar",
+        "otillåten_andrahand",
+        "vanvård",
+        "brottslig_verksamhet",
+        "vägran_tillträde",
+        "otillåten_inneboende",
+        "annan",
+      ]
+
+hyreshojning:
+  - id: nuvarande_hyra
+    label: Nuvarande hyra
+    type: number
+  - id: foreslagen_hyra
+    label: Föreslagen hyra
+    type: number
+  - id: forhandlingsordning
+    label: Finns förhandlingsordning?
+    type: boolean
+
+brist:
+  - id: beskrivning
+    label: Beskriv bristen
+    type: textarea
+  - id: typ
+    label: Typ av brist
+    type: select
+    options: ["fukt", "mögel", "trasig_utrustning", "buller", "skadedjur", "annat"]
+  - id: anmald_till_hyresvard
+    label: Har bristen anmälts till hyresvärden?
+    type: boolean

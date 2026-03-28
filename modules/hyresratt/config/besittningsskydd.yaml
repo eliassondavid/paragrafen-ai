@@ -1,0 +1,12 @@
+besittningsskydd:
+  huvudregel:
+    lagrum: "JB 12 kap. 46 §"
+    beskrivning: "Bostadshyresgäster har normalt rätt till förlängning av avtalet."
+  brytande_grunder:
+    - "allvarligt kontraktsbrott"
+    - "rivning eller större ombyggnad med godtagbar plan"
+    - "hyresgästen har åsidosatt sina skyldigheter i hög grad"
+  mvp_eskalera:
+    - "oklar besittningsskyddsbrytande grund"
+    - "lokalhyra"
+    - "bostadsrättsspecifika frågor"
