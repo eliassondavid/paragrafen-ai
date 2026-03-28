@@ -55,3 +55,21 @@ modules:
       preparatory: 1.0
       persuasive: 0.8
 
+  second_opinion:
+    description: "Second Opinion — granskning av juridiskt råd"
+    collections:
+      - { instance: sfs,        weight: 1.0 }
+      - { instance: prop,       weight: 0.8 }
+      - { instance: sou,        weight: 0.6 }
+      - { instance: praxis,     weight: 1.0 }
+      - { instance: doktrin,    weight: 0.8 }
+      - { instance: jo,         weight: 0.7 }
+      - { instance: jk,         weight: 0.6 }
+      - { instance: bet,        weight: 0.5 }
+      - { instance: foreskrift, weight: 0.7 }
+      - { instance: namnder,    weight: 0.5 }
+    authority_boost:
+      binding: 2.0
+      guiding: 1.5
+      preparatory: 1.0
+      persuasive: 0.8

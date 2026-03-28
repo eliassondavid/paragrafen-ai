@@ -1,0 +1,8 @@
+rag_module: "second_opinion"
+n_results: 25
+minimum_rag_hits: 5
+
+excluded_areas:
+  - straffrätt
+  - skatterätt
+  - migrationsrätt

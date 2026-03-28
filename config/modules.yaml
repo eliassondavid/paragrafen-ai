@@ -6,6 +6,19 @@ modules:
     rag_module: "allman"
     requires_api_key: false
 
+  second_opinion:
+    enabled: true
+    label: "Second Opinion"
+    icon: "🔍"
+    rag_module: "second_opinion"
+    requires_api_key: false
+
+  arvskalkylator:
+    enabled: true
+    label: "Arvskalkylator"
+    icon: "📊"
+    requires_api_key: false
+
   framtidsfullmakt:
     enabled: false
     label: "Framtidsfullmakt"
@@ -19,4 +32,3 @@ modules:
     icon: "🏛️"
     rag_module: "upphandling"
     requires_api_key: true
-
